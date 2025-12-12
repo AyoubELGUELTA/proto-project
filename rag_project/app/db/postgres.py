@@ -46,7 +46,7 @@ def store_chunks(chunks, doc_id):
     
     # Insertion multiple optimisée
     execute_values(cur,
-        "INSERT INTO chunks (doc_id, chunk_index, chunk_type, chunk_text) VALUES %s",
+        "INSERT INTO chunks (doc_id, chunk_index, chunk_content) VALUES %s",
         data
     )
     

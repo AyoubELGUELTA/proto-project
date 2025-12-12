@@ -1,35 +1,33 @@
 # app/ingestion/pdf_loader.py
-from unstructured.partition.pdf import partition_pdf
-from unstructured.documents.elements import Text, Table, Image
+# app/ingestion/pdf_loader.py
 import os
+from unstructured.partition.pdf import partition_pdf
+from unstructured.documents.elements import Image
 
-class PDFElement:
-    def __init__(self, type, text=None, filename=None):
-        self.type = type  # "Text", "Table", "Image"
-        self.text = text
-        self.filename = filename
+def partition_document(file_path: str, output_image_dir="images"):
+    """Extract elements from PDF using unstructured and save images locally"""
+    
+    # Crée le dossier pour les images s'il n'existe pas
+    os.makedirs(output_image_dir, exist_ok=True)
+    
+    elements = partition_pdf(
+    filename=file_path,
+    strategy="hi_res",
+    infer_table_structure=True,
+    extract_image_block_types=["Image"],
+    extract_image_block_to_payload=True,
+    extract_image_block_output_dir=output_image_dir
+)
+    
+    # Parcours les éléments pour sauvegarder les images localement
+    for el in elements:
+        if isinstance(el, Image):
+            # ajoute un attribut file_path pour le chemin local
+            imageId = el._element_id
 
-def load_pdf_elements(pdf_path):
-    """
-    Retourne une liste d'éléments atomiques (texte, tables, images)
-    """
-    elements = []
-
-    # Partitionne le PDF en objets par unstructured
-    partitions = partition_pdf(filename=pdf_path)
-
-    for part in partitions:
-        if isinstance(part, Text):
-            if part.text.strip():
-                elements.append(PDFElement(type="Text", text=part.text.strip()))
-        elif isinstance(part, Table):
-            elements.append(PDFElement(type="Table", text=part.to_html()))
-        elif isinstance(part, Image):
-            # Sauvegarde temporaire de l'image pour OCR
-            base_dir = os.path.dirname(pdf_path)
-            image_filename = os.path.join(base_dir, f"{os.path.basename(pdf_path)}_img_{len(elements)}.png")
-            with open(image_filename, "wb") as img_f:
-                img_f.write(part.data)
-            elements.append(PDFElement(type="Image", filename=image_filename))
-
+            el.metadata.image_path = os.path.join(output_image_dir, str(imageId)+".jpg")
+    
     return elements
+
+
+
