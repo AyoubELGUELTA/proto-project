@@ -1,55 +1,48 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
-from app.ingestion.pdf_loader import load_pdf_elements
-from app.ingestion.ocr import ocr_fallback
-from app.ingestion.chunker import chunk_elements
+from fastapi import FastAPI, UploadFile, File
 import os
+import shutil
+import uuid
 
-app = FastAPI(title="RAG Multi-Modal Prototype")
+from .ingestion.pdf_loader import partition_document
+from .ingestion.chunker import create_chunks
+from .ingestion.analyze_content import separate_content_types
+from .db.postgres import store_chunk
 
-# Dossier temporaire pour stocker les fichiers uploadés
-UPLOAD_DIR = "uploaded_pdfs"
+app = FastAPI(title="Dawask RAG Prototype")
+
+UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-@app.post("/ingest")
+@app.post("/ingest_pdf")
 async def ingest_pdf(file: UploadFile = File(...)):
     """
-    Endpoint pour ingérer un PDF :
-    1. Sauvegarde temporaire
-    2. Extraction multimodale via unstructured + OCR si nécessaire
-    3. Chunking
-    4. Stockage dans Postgres
+    Upload d'un PDF et ingestion complète dans la base
     """
-    if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="Seuls les fichiers PDF sont acceptés")
-    
-    # Utiliser le nom du fichier comme doc_id
-    doc_id = file.filename
-    temp_path = os.path.join(UPLOAD_DIR, doc_id)
-    
-    # Sauvegarder le fichier temporairement
-    with open(temp_path, "wb") as f:
-        f.write(await file.read())
-    
-    # Étape 1 : extraire les éléments atomiques (texte, tables, images)
-    elements = load_pdf_elements(temp_path)
+    # 1️⃣ Sauvegarde locale du PDF
 
-    # Étape 2 : fallback OCR si texte vide
-    for el in elements:
-        if el.type == "Text" and not el.text.strip():
-            el.text = ocr_fallback(el)  # ocr_fallback doit retourner une string
-    
-    # Étape 3 : chunker et stocker dans Postgres
-    chunks = chunk_elements(elements, doc_id=doc_id)
-    
-    # Supprimer le fichier temporaire
-    os.remove(temp_path)
-    
-    return JSONResponse(
-        content={
-            "doc_id": doc_id,
-            "num_elements": len(elements),
-            "num_chunks": len(chunks),
-            "message": "PDF ingéré avec succès"
-        }
-    )
+    doc_id = str(uuid.uuid4())
+    file_path = os.path.join(UPLOAD_DIR, f"{doc_id}.pdf")
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # 2️⃣ Partition du PDF
+    elements = partition_document(file_path)
+
+    # 3️⃣ Chunking
+    chunks = create_chunks(elements)
+
+    # 4️⃣ Analyse + stockage
+    for chunk in chunks:
+        analyzed_chunk = separate_content_types(chunk)
+        store_chunk(analyzed_chunk, doc_id)
+
+    return {
+        "status": "success",
+        "document": doc_id,
+        "chunks_stored": len(chunks)
+    }
+
+
+
+

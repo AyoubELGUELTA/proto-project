@@ -1,31 +1,19 @@
-# app/ingestion/pdf_loader.py
-# app/ingestion/pdf_loader.py
-import os
-from unstructured.partition.pdf import partition_pdf
-from unstructured.documents.elements import Image
 
-def partition_document(file_path: str, output_image_dir="images"):
-    """Extract elements from PDF using unstructured and save images locally"""
-    
-    # Crée le dossier pour les images s'il n'existe pas
-    os.makedirs(output_image_dir, exist_ok=True)
+from unstructured.partition.pdf import partition_pdf
+import pytesseract
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+def partition_document(file_path: str):
+    """Extract elements from PDF using unstructured"""
     
     elements = partition_pdf(
-    filename=file_path,
-    strategy="hi_res",
-    infer_table_structure=True,
-    extract_image_block_types=["Image"],
-    extract_image_block_to_payload=True,
-    extract_image_block_output_dir=output_image_dir
-)
-    
-    # Parcours les éléments pour sauvegarder les images localement
-    for el in elements:
-        if isinstance(el, Image):
-            # ajoute un attribut file_path pour le chemin local
-            imageId = el._element_id
-
-            el.metadata.image_path = os.path.join(output_image_dir, str(imageId)+".jpg")
+        filename=file_path,  # Path to your PDF file
+        strategy="hi_res", # Use the most accurate (but slower) processing method of extraction
+        infer_table_structure=True, # Keep tables as structured HTML, not jumbled text
+        languages= ["fra","eng"],
+        extract_image_block_types=["Image"], # Grab images found in the PDF
+        extract_image_block_to_payload=True # Store images as base64 data you can actually use
+    )
     
     return elements
 

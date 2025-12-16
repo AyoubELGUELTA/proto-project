@@ -4,7 +4,6 @@ def separate_content_types(chunk):
         'text': getattr(chunk, 'text', ''), #fallback si ya pas .text dans chunk
         'tables': [],
         'images_base64': [],
-        'images_url': [],
         'types': ['text'] if getattr(chunk, 'text', '') else [] #meme logique de fall back
     }
     
@@ -27,8 +26,6 @@ def separate_content_types(chunk):
             if image_meta:
                 if getattr(image_meta, 'image_base64', None):
                     content_data['images_base64'].append(image_meta.image_base64)
-                if getattr(image_meta, 'image_path', None):
-                    content_data['images_url'].append(image_meta.image_path)
                 if 'image' not in content_data['types']:
                     content_data['types'].append('image')
     
