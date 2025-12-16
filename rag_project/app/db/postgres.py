@@ -17,21 +17,34 @@ def get_connection():
 
 
 
-def store_chunk(analyzed_chunk, doc_id):
+def store_chunks_batch(analyzed_chunks, doc_id):
     conn = get_connection()
     cur = conn.cursor()
 
-    # Calcul du prochain index pour ce document
+    # Get the starting index
     cur.execute("""
-        SELECT COALESCE(MAX(chunk_index), 0) + 1 
+        SELECT COALESCE(MAX(chunk_index), 0)
         FROM chunks
         WHERE doc_id = %s
-    """, (doc_id,)) #COALESCE récupere la premiere valeure non nulle de (a,b,c...)
-    
-    row = cur.fetchone()
-    chunk_index = row[0] if row is not None else 1 
+    """, (doc_id,))    
 
-    cur.execute("""
+    row = cur.fetchone()
+    start_index = row[0] if row is not None else 1 
+
+    #Prepare values to insert
+    values = []
+    for i, chunk in enumerate(analyzed_chunks):
+        values.append((
+            doc_id,
+            start_index + i,
+            chunk["types"],
+            chunk["text"],
+            json.dumps(chunk["tables"]),
+            json.dumps(chunk["images_base64"]),
+        ))
+
+    # INSERT batch
+    cur.executemany("""
         INSERT INTO chunks (
             doc_id,
             chunk_index,
@@ -41,16 +54,8 @@ def store_chunk(analyzed_chunk, doc_id):
             chunk_images_base64
         )
         VALUES (%s, %s, %s, %s, %s, %s)
-    """, (
-        doc_id,
-        chunk_index,
-        analyzed_chunk["types"],
-        analyzed_chunk["text"],
-        json.dumps(analyzed_chunk["tables"]),
-        json.dumps(analyzed_chunk["images_base64"])
-    ))
+    """, values)
 
     conn.commit()
     cur.close()
     conn.close()
-
