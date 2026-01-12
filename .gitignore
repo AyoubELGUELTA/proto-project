@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+.venv/
+*.venv/
+.env/
+*.env
+
+# PDF / Data
+data/pdf/
+data/images/
+
+# Vector DB
+qdrant_data/
+chroma_db/
+
+# Docker
+*.log
+*.sqlite
+
+# OS
+.DS_Store
+Thumbs.db
