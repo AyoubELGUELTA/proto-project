@@ -1,21 +1,16 @@
-from unstructured.chunking.basic import chunk_elements
+from unstructured.chunking.title import chunk_by_title
 
-def create_chunks(elements, chunk_size=500, overlap=100):
+def create_chunks(elements, chunk_size=3000):
     """
-    Découpe les éléments atomiques en chunks intelligents :
-    - Texte : découpe en utilisant sauts de ligne ou points pour ne pas couper les phrases
-    - Tables / Images : un chunk par élément
+    Découpe sémantique par titre. 
+    L'intelligence d'Unstructured regroupe les paragraphes sous leurs titres respectifs.
     """    
-    chunks = chunk_elements(
-        elements, # The parsed PDF elements from previous step
-        include_orig_elements = True, # we need the original elements
-        max_characters=800, # Hard limit - never exceed 3000 characters per chunk
-        new_after_n_chars=chunk_size, # Try to start a new chunk after 2400 characters
-        overlap=overlap,
-
+    chunks = chunk_by_title(
+        elements,
+        multipage_sections=True,      # Garde la cohérence même si ça change de page
+        combine_text_under_n_chars=500  , # Regroupe les petits paragraphes
+        max_characters=chunk_size,    # Limite haute à 2000
+        new_after_n_chars=2000,
+        include_orig_elements=True,    # pour garder tes tables/images
     )
-
-    # Stocke les chunks dans Postgres
     return chunks
-    
-

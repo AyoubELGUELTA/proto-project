@@ -209,3 +209,5 @@ xxhash==3.6.0
 yarl==1.22.0
 zipp==3.23.0
 zstandard==0
+sentence-transformers
+cohere

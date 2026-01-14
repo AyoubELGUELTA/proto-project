@@ -1,17 +1,18 @@
 from dotenv import load_dotenv
 import os
 from pathlib import Path
+
 # Chemin absolu vers le .env
+
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # print(f"DEBUG: Looking for .env at: {env_path}")
 # print(f"DEBUG: Does file exist? {env_path.exists()}")
 
-load_dotenv(dotenv_path=env_path)
 
-HF_TOKEN = os.getenv("HF_TOKEN")
 # print("DEBUG HF_TOKEN:", HF_TOKEN) 
+
 
 load_dotenv()  
 from fastapi import FastAPI, UploadFile, File
@@ -28,6 +29,10 @@ from .embeddings.embedder import vectorize_documents
 from .embeddings.summarizing import summarise_chunks
 
 from .vector_store.qdrant_service import store_vectors_incrementally
+from .rag.retriever import search_top_k
+from .rag.generator import generate_answer_with_history
+from .rag.reranker import rerank_results
+
 
 
 app = FastAPI(title="Dawask RAG Prototype")
@@ -126,24 +131,43 @@ async def ingest_pdf(file: UploadFile = File(...)):
         return {"status": "error", "detail": str(e)}
     
 
-from .rag.retriever import search_top_k
 
 @app.get("/query")
 async def query_rag(question: str, limit: int = 3):
     """
-    Ask a question and get the most relevant PDF chunks.
+    Endpoint to process RAG queries with a Retrieve-then-Rerank pipeline.    
     """
     try:
-        # 2. Search in Qdrant
-        relevant_chunks = search_top_k(question, limit=limit)
+        # 1. Broad Search (Retrieve more chunks than needed for the final answer)
+        # We fetch 10-15 chunks to give the Reranker enough variety to pick from
+
+        initial_chunks = search_top_k(question, limit=10)
+
+        if not initial_chunks:
+            return {"answer": "No relevant documents found. Maybe an error? :/", "sources": []}
+        
+        # 2. Rerank the results
+        # This will re-order the 10 chunks and return the top 'limit' (default 3)
+        # Based on deep semantic understanding
+
+        refined_chunks = rerank_results(question, initial_chunks, top_n=limit)
+
+        # 3. Generate Answer using the refined context
+        # The LLM now receives only the most pertinent information
+        answer = generate_answer_with_history(question, refined_chunks)
         
         return {
-            "status": "success",
-            "question": question,
-            "results": relevant_chunks
+            "answer": answer,
+            "sources": [c for c in refined_chunks]
         }
     except Exception as e:
-        return {"status": "error", "detail": str(e)}
+        return {"status": "error", "message": str(e)}
+    
+@app.post("/clear-history") #to clear history context of the user, every day, every new chat, ...
+async def reset_chat():
+    global chat_history
+    chat_history = []
+    return {"message": "Discussion reset successfully"}
 
 
 

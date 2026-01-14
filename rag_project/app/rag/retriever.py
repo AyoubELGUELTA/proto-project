@@ -1,4 +1,4 @@
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 import os
 from ..embeddings.hf_solon_client_embedder import SolonEmbeddingClient
 from ..embeddings.local_embedder import LocalSolonEmbeddingClient
@@ -13,13 +13,12 @@ else:
     print("💻 Using Local MPS Embeddings (Development)")
 
 
-from qdrant_client import models
 
-def search_top_k(query, doc_id=None, collection_name="all_documents", limit=5):
+def search_top_k(query, doc_id=None, collection_name="all_documents", limit=12):
     client = QdrantClient(url="http://localhost:6333")
-    query_vector = embedding_client.embed_query(query)
+    query_vector = embedding_client.embed_query(f"query: {query}")
     
-    # Build the filter if a doc_id is provided
+    # # Build the filter if a doc_id is provided
     search_filter = None
     if doc_id:
         search_filter = models.Filter(
@@ -35,6 +34,6 @@ def search_top_k(query, doc_id=None, collection_name="all_documents", limit=5):
     )
     
     return [
-        {"score": hit.score, "text": hit.payload.get("metadata"), "doc_id": hit.payload.get("doc_id")}
+        {"score": hit.score, "metadata": hit.payload.get("metadata"), "doc_id": hit.payload.get("doc_id")}
         for hit in search_result.points
     ]
