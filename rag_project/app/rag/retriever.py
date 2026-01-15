@@ -14,9 +14,10 @@ else:
 
 
 
-def search_top_k(query, doc_id=None, collection_name="all_documents", limit=12):
+def search_top_k(standalone_query, doc_id=None, collection_name="all_documents", limit=12):
     client = QdrantClient(url="http://localhost:6333")
-    query_vector = embedding_client.embed_query(f"query: {query}")
+
+    query_vector = embedding_client.embed_query(f"query: {standalone_query}")
     
     # # Build the filter if a doc_id is provided
     search_filter = None

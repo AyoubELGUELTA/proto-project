@@ -30,8 +30,9 @@ from .embeddings.summarizing import summarise_chunks
 
 from .vector_store.qdrant_service import store_vectors_incrementally
 from .rag.retriever import search_top_k
-from .rag.generator import generate_answer_with_history
+from .rag.answer_generator import generate_answer_with_history
 from .rag.reranker import rerank_results
+from .rag.query_rewriter import rewrite_query
 
 
 
@@ -39,6 +40,7 @@ app = FastAPI(title="Dawask RAG Prototype")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 
 @app.post("/ingest_pdf")
 async def ingest_pdf(file: UploadFile = File(...)):
@@ -131,31 +133,39 @@ async def ingest_pdf(file: UploadFile = File(...)):
         return {"status": "error", "detail": str(e)}
     
 
+chat_history = []
 
 @app.get("/query")
-async def query_rag(question: str, limit: int = 3):
+async def query_rag(question: str, limit: int = 8):
     """
     Endpoint to process RAG queries with a Retrieve-then-Rerank pipeline.    
     """
-    try:
-        # 1. Broad Search (Retrieve more chunks than needed for the final answer)
-        # We fetch 10-15 chunks to give the Reranker enough variety to pick from
+    global chat_history
 
-        initial_chunks = search_top_k(question, limit=10)
+    try:
+        # 1. Rewrite the question BEFORE retrieval
+
+        standalone_query = rewrite_query(question, chat_history)
+
+        # 2. Retrieve
+                
+        initial_chunks = search_top_k(standalone_query, limit=12)
 
         if not initial_chunks:
             return {"answer": "No relevant documents found. Maybe an error? :/", "sources": []}
         
-        # 2. Rerank the results
-        # This will re-order the 10 chunks and return the top 'limit' (default 3)
+        # 3. Rerank the results
+        # This will re-order the 10 chunks and return the top 'limit' (default 8)
         # Based on deep semantic understanding
 
-        refined_chunks = rerank_results(question, initial_chunks, top_n=limit)
+        refined_chunks = rerank_results(standalone_query, initial_chunks, top_n=limit)
 
-        # 3. Generate Answer using the refined context
+        # 4. Generate Answer using the refined context
         # The LLM now receives only the most pertinent information
-        answer = generate_answer_with_history(question, refined_chunks)
-        
+        answer = generate_answer_with_history(question, refined_chunks, chat_history)
+        chat_history.append({"role": "user", "content": question})
+        chat_history.append({"role": "assistant", "content": answer})
+
         return {
             "answer": answer,
             "sources": [c for c in refined_chunks]
