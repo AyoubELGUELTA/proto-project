@@ -1,7 +1,6 @@
+import os 
 from langchain_core.documents import Document
-from dotenv import load_dotenv
 from .create_enhanced_ai_summary import create_ai_enhanced_summary
-load_dotenv()
 
 def summarise_chunks(organized_chunks):
     langchain_documents = []

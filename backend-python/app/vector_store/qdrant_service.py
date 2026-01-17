@@ -1,6 +1,20 @@
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import VectorParams,  Distance, PointStruct
+import os
 import uuid
+
+def get_qdrant_client():
+    """
+    Initializes the Qdrant client using environment variables    
+    """
+    
+    host = os.getenv("QDRANT_HOST", "localhost")
+    port = os.getenv("QDRANT_PORT", "6333")
+    url = f"http://{host}:{port}"
+    
+    api_key = os.getenv("QDRANT_API_KEY") # to look at in prod 
+    
+    return QdrantClient(url=url, api_key=api_key, timeout=60)
 
 def store_vectors_incrementally(vectorized_docs, doc_id: str, collection_name="all_documents"):    
     """
@@ -14,7 +28,7 @@ def store_vectors_incrementally(vectorized_docs, doc_id: str, collection_name="a
         print("No documents to store.")
         return
 
-    qdrant_client = QdrantClient(url="http://localhost:6333", timeout=60)
+    qdrant_client = get_qdrant_client()
     
     # 1. Create collection ONCE if it doesn't exist
     if not qdrant_client.collection_exists(collection_name):

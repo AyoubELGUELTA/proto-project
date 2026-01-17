@@ -1,26 +1,36 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-env/
-.venv/
-*.venv/
-.env/
-*.env
-
-# PDF / Data
-data/pdf/
-data/images/
-
-# Vector DB
-qdrant_data/
-chroma_db/
-
-# Docker
-*.log
-*.sqlite
-
-# OS
+# --- OS & IDE ---
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+
+# --- Environnement & Secrets (CRITIQUE) ---
+.env
+*.env
+.venv/
+env/
+node_modules/
+
+# --- Docker & DB ---
+qdrant_data/
+pg_data/
+*.log
+*.sqlite
+# On ignore le docker-compose si on veut garder ses configs privées 
+# OU on utilise un docker-compose.override.yml (voir conseil plus bas)
+docker-compose.override.yml
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# --- Node.js ---
+dist/
+build/
+npm-debug.log*
+
+# --- Données du projet ---
+uploads/
+data/pdf/

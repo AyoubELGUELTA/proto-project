@@ -1,42 +1,34 @@
-from dotenv import load_dotenv
 import os
-from pathlib import Path
-
-# Chemin absolu vers le .env
-
-env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=env_path)
-
-# print(f"DEBUG: Looking for .env at: {env_path}")
-# print(f"DEBUG: Does file exist? {env_path.exists()}")
-
-
-# print("DEBUG HF_TOKEN:", HF_TOKEN) 
-
-
-load_dotenv()  
-from fastapi import FastAPI, UploadFile, File
-import shutil
 import uuid
 import time
+import shutil
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from typing import List
 
+# Importation de tes modules nettoyés
 from .ingestion.pdf_loader import partition_document
 from .ingestion.chunker import create_chunks
 from .ingestion.analyze_content import separate_content_types
 from .db.postgres import store_chunks_batch
-
 from .embeddings.embedder import vectorize_documents
 from .embeddings.summarizing import summarise_chunks
-
 from .vector_store.qdrant_service import store_vectors_incrementally
 from .rag.retriever import search_top_k
 from .rag.answer_generator import generate_answer_with_history
 from .rag.reranker import rerank_results
 from .rag.query_rewriter import rewrite_query
 
-
-
 app = FastAPI(title="Dawask RAG Prototype")
+# Indispensable pour que l'UI (frontend) puisse appeler Docker (backend)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # À restreindre en prod (ex: ["http://localhost:3000"])
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -130,8 +122,8 @@ async def ingest_pdf(file: UploadFile = File(...)):
         }
 
     except Exception as e:
-        return {"status": "error", "detail": str(e)}
-    
+        print(f"❌ Erreur Ingestion: {e}")
+        raise HTTPException(status_code=500, detail=str(e))    
 
 chat_history = []
 
@@ -149,10 +141,10 @@ async def query_rag(question: str, limit: int = 8):
 
         # 2. Retrieve
                 
-        initial_chunks = search_top_k(standalone_query, limit=12)
+        initial_chunks = search_top_k(standalone_query, limit=16)
 
         if not initial_chunks:
-            return {"answer": "No relevant documents found. Maybe an error? :/", "sources": []}
+            return {"answer": "Je n'ai pas trouvé de documents pertinents pour répondre a ta demande. :/", "sources": []}
         
         # 3. Rerank the results
         # This will re-order the 10 chunks and return the top 'limit' (default 8)
@@ -163,15 +155,19 @@ async def query_rag(question: str, limit: int = 8):
         # 4. Generate Answer using the refined context
         # The LLM now receives only the most pertinent information
         answer = generate_answer_with_history(question, refined_chunks, chat_history)
+
         chat_history.append({"role": "user", "content": question})
         chat_history.append({"role": "assistant", "content": answer})
 
         return {
             "answer": answer,
+            "standalone_query": standalone_query,
             "sources": [c for c in refined_chunks]
         }
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        print(f"❌ Erreur Query: {e}")
+        raise HTTPException(status_code=500, detail=str(e))    
+    
     
 @app.post("/clear-history") #to clear history context of the user, every day, every new chat, ...
 async def reset_chat():

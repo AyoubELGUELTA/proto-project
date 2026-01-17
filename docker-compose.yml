@@ -1,0 +1,50 @@
+services:
+  # --- Qdrant : Vector DB ---
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  # --- PostgreSQL : DB ---
+  postgres:
+    image: postgres:16
+    
+    container_name: postgres
+    
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # --- FastAPI : RAG Engine ---
+  fastapi:
+    container_name: fastapi_rag
+
+    build:
+      context: ./backend-python
+      dockerfile: Dockerfile
+    volumes:
+      - hf_cache:/root/.cache/huggingface # Persiste les modèles téléchargés
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - qdrant
+    restart: unless-stopped
+
+  # --- Node.js : Backend / Gateway ---
+  backend-node:
+    build: ./backend-node
+    container_name: node_gateway
+    environment:
+      - FASTAPI_URL=http://fastapi:8000
+    depends_on:
+      - fastapi
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
+  pg_data:
+  hf_cache:

@@ -1,5 +1,6 @@
 import psycopg2
 import json
+import os 
 from psycopg2.extras import execute_values
 
 def get_connection():
@@ -7,13 +8,25 @@ def get_connection():
     Retourne une connexion PostgreSQL.
     Changez les paramètres selon votre setup.
     """
-    conn = psycopg2.connect(
-        host="localhost",
-        database="ragdb",
-        user="admin",
-        password="mysecretpassword"
-    )
-    return conn
+
+    host = os.getenv("DB_HOST") # "postgres" is the name of our service in docker compose
+    database = os.getenv("DB_NAME")
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASSWORD")
+    port = os.getenv("DB_PORT", "5432")
+
+    try:
+        conn = psycopg2.connect(
+            host=host,
+            database=database,
+            user=user,
+            password=password,
+            port=port
+        )
+        return conn
+    except Exception as e:
+        print(f"❌ Erreur de connexion à la base de données : {e}")
+        raise
 
 def init_db():
     """

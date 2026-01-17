@@ -1,12 +1,10 @@
+import os
+
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
-from dotenv import load_dotenv
 
 from typing import List, Dict, Any, cast
 from .normalize_llm_response import normalize_llm_content  # to stringify the llm response
-
-load_dotenv()
-
 
 def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) -> str:
     """
@@ -20,13 +18,19 @@ def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) 
         return text
 
     try:
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        model_name = os.getenv("SUMMARIZER_MODEL_NAME", "gpt-4.1-nano-2025-04-14")
+
         # Initialize LLM (vision-capable for images)
         llm = ChatOpenAI(
-            model="gpt-4.1-nano-2025-04-14",
+            model=model_name,
+            api_key = api_key,
             temperature=0
         )
 
         # STRICT, NON-EXPANSIVE PROMPT
+
         prompt_text = f"""
 You are processing a document chunk for semantic indexing.
 
@@ -80,6 +84,7 @@ TEXT CONTENT:
 
         return normalize_llm_content(response.content)
 
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ Erreur LLM Vision: {e}")
         # Fallback: return original text unchanged
         return text
