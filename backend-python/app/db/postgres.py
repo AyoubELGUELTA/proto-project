@@ -37,10 +37,10 @@ def init_db():
     
     create_table_query = """
     CREATE TABLE IF NOT EXISTS chunks (
-        id SERIAL PRIMARY KEY,
+        chunk_id UUID PRIMARY KEY,
         doc_id TEXT NOT NULL,
         chunk_index INTEGER NOT NULL,
-        chunk_text TEXT,
+        chunk_text TEXT NOT NULL,
         chunk_tables JSONB,
         chunk_images_base64 JSONB,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

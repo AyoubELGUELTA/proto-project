@@ -16,7 +16,7 @@ def get_qdrant_client():
     
     return QdrantClient(url=url, api_key=api_key, timeout=60)
 
-def store_vectors_incrementally(vectorized_docs, doc_id: str, collection_name="all_documents"):    
+def store_vectors_incrementally(vectorized_docs, collection_name="all_documents"):    
     """
     Store vectorized documents in a local Qdrant collection, creating it if it doesn't exist.
     
@@ -37,18 +37,14 @@ def store_vectors_incrementally(vectorized_docs, doc_id: str, collection_name="a
             collection_name=collection_name,
             vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
         )
-        # Create a payload index for doc_id to make filtering ultra-fast - TO LOOK AT AFTERWISE
-        qdrant_client.create_payload_index(collection_name, "doc_id", field_schema="keyword")
+
 
     # 2. Upload points (they all go to the same collection)
     points = [
         PointStruct(
-            id=str(uuid.uuid4()), # Use unique IDs for every chunk
+            id=doc["chunk_id"], # Use unique IDs for every chunk
             vector=doc["vector"],
-            payload={
-                "doc_id": doc_id,  # This is the 'Filter' key TO LOOK AT 
-                "metadata": doc["metadata"]
-            }
+            payload={} # WE ACCESS THE PAYLOAD FROM POSTGRES, WE ONLY STORE VECTORES + CHUNK IDS IN QDRANT
         ) for doc in vectorized_docs
     ]
     qdrant_client.upsert(collection_name=collection_name, points=points)

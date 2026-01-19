@@ -1,6 +1,6 @@
 import os
 from unstructured.partition.pdf import partition_pdf
-import pytesseract
+
 
 def partition_document(file_path: str):
     """Extract elements from PDF using unstructured"""

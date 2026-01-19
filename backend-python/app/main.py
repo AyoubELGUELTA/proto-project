@@ -33,6 +33,10 @@ app.add_middleware(
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+@app.get("/") #allows to check if nodejs commuicate or not with fastapi, health check nothing more
+def read_root():
+    return {"status": "ok", "message": "FastAPI is hungry for PDFs"}
+
 
 @app.post("/ingest_pdf")
 async def ingest_pdf(file: UploadFile = File(...)):
@@ -96,7 +100,9 @@ async def ingest_pdf(file: UploadFile = File(...)):
 
 
 
-        filename = file.filename if file.filename is not None else None
+        
+        original_filename = file.filename if file.filename else "unknown_file"
+
         store_vectors_incrementally(vectorized_docs=vectorised_chunks,doc_id = doc_id)
         print("🔥 vectored chunks stored 🔥")
 
@@ -105,11 +111,15 @@ async def ingest_pdf(file: UploadFile = File(...)):
         end_time = time.perf_counter()
         duration = round(end_time - start_time, 2)
 
+        # On sécurise l'affichage pour éviter l'erreur ASCII au cas où
+        first_chunk_preview = str(summarised_chunks[0])[:200] # Un aperçu court
+
         return {
             "status": "success",
             "document": doc_id,
+            "filename": original_filename,
             "chunks_stored": len(chunks),
-            "first_chunk_summarized": summarised_chunks[0],
+            "first_chunk_summarized": first_chunk_preview,
             "timings": {
                 "partition": round(t1 - t0, 2),
                 "chunking": round(t2 - t1, 2),

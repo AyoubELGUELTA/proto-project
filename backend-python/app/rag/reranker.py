@@ -27,6 +27,8 @@ def get_local_reranker():
         )
     return _LOCAL_MODEL_CACHE
 
+MIN_RERANK_SCORE = 0.01 #to test in rEALITY...
+
 def rerank_results(query, retrieved_docs, top_n=8):
     """
     Re-rank the search results based on the current ENVIRONMENT.
@@ -34,33 +36,20 @@ def rerank_results(query, retrieved_docs, top_n=8):
 
     if not retrieved_docs:
         return []
-
-    env = os.getenv("ENVIRONMENT", "development")
     
-    # Extract text from Qdrant hits for the re-ranking models
-    try:
-        documents_text = [
-            doc.get("metadata", {}).get("original_content", {}).get("raw_text", "") 
-            for doc in retrieved_docs
-        ]
-    except Exception as e:
-        print(f"⚠️ Erreur lors de l'extraction des textes pour le reranking: {e}")
-        return retrieved_docs[:top_n] # Fallback: on renvoie les résultats bruts de Qdrant
+    documents_text = [doc["text"] for doc in retrieved_docs]
 
     final_results = []
+    env = os.getenv("ENVIRONMENT", "development")
 
-    # --- DEVELOPMENT / LOCAL MODE ---
+
 
     try:
         if env == "development":
-
-            # Access the singleton model
             model = get_local_reranker()
-
-            # Prepare pairs for the Cross-Encoder
             pairs = [[query, text] for text in documents_text]
             scores = model.predict(pairs)
-            
+
             for i, doc in enumerate(retrieved_docs):
                 doc["rerank_score"] = float(scores[i])
                 final_results.append(doc)
@@ -74,7 +63,6 @@ def rerank_results(query, retrieved_docs, top_n=8):
                 print("❌ COHERE_API_KEY manquante. Reranking impossible.")
                 return retrieved_docs[:top_n]
             
-            # API call to Cohere
             co = cohere.Client(api_key)
 
             response = co.rerank(
@@ -84,17 +72,18 @@ def rerank_results(query, retrieved_docs, top_n=8):
                 top_n=top_n
             )
             
-            # Map the results back to our document structure
             for result in response.results:
                 doc = retrieved_docs[result.index]
                 doc["rerank_score"] = result.relevance_score
                 final_results.append(doc)
 
-        final_results = sorted(final_results, key=lambda x: x["rerank_score"], reverse=True)
+        filtered = [
+        r for r in final_results
+        if r["rerank_score"] >= MIN_RERANK_SCORE
+        ]
+        filtered.sort(key=lambda x: x["rerank_score"], reverse=True)
 
-        threshold = 0.0 
-        
-        return [d for d in final_results if d.get("rerank_score", -1) > threshold][:top_n]
+        return filtered[:top_n]
     
     except Exception as e:
         print(f"❌ Erreur critique pendant le reranking: {e}")
