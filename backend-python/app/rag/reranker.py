@@ -36,7 +36,7 @@ def rerank_results(query, retrieved_docs, top_n=8):
 
     if not retrieved_docs:
         return []
-    
+    print(retrieved_docs)
     documents_text = [doc["text"] for doc in retrieved_docs]
 
     final_results = []
@@ -69,7 +69,7 @@ def rerank_results(query, retrieved_docs, top_n=8):
                 model='rerank-multilingual-v3.0',
                 query=query,
                 documents=documents_text,
-                top_n=top_n
+                top_n=len(documents_text)
             )
             
             for result in response.results:

@@ -7,14 +7,17 @@ def get_qdrant_client():
     """
     Initializes the Qdrant client using environment variables    
     """
-    
+
     host = os.getenv("QDRANT_HOST", "localhost")
     port = os.getenv("QDRANT_PORT", "6333")
     url = f"http://{host}:{port}"
     
-    api_key = os.getenv("QDRANT_API_KEY") # to look at in prod 
-    
-    return QdrantClient(url=url, api_key=api_key, timeout=60)
+    # api_key = os.getenv("QDRANT_API_KEY")
+
+    # if api_key != "":
+    #     return QdrantClient(url=url, api_key=api_key, timeout=60)
+    # else:
+    return QdrantClient(url=url, timeout=60)
 
 def store_vectors_incrementally(vectorized_docs, collection_name="all_documents"):    
     """
@@ -27,26 +30,35 @@ def store_vectors_incrementally(vectorized_docs, collection_name="all_documents"
     if not vectorized_docs:
         print("No documents to store.")
         return
-
-    qdrant_client = get_qdrant_client()
     
+    qdrant_client = get_qdrant_client()
+
     # 1. Create collection ONCE if it doesn't exist
-    if not qdrant_client.collection_exists(collection_name):
+    try:
+        exists = qdrant_client.collection_exists(collection_name)
+        print("DEBUG collection_exists:", exists)
+    except Exception as e:
+        print("❌ ERROR while checking collection:", e)
+        raise
+
+    if not exists:
+        print("DEBUG 2 - creating collection")
         vector_size = len(vectorized_docs[0]["vector"])
         qdrant_client.create_collection(
-            collection_name=collection_name,
+            collection_name=str(collection_name),
             vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
         )
 
-
+    print("DEBUG 3")
     # 2. Upload points (they all go to the same collection)
     points = [
         PointStruct(
             id=doc["chunk_id"], # Use unique IDs for every chunk
-            vector=doc["vector"],
-            payload={} # WE ACCESS THE PAYLOAD FROM POSTGRES, WE ONLY STORE VECTORES + CHUNK IDS IN QDRANT
+            vector=doc["vector"]
+            # WE ACCESS THE PAYLOAD FROM POSTGRES, WE ONLY STORE VECTORES + CHUNK IDS IN QDRANT
         ) for doc in vectorized_docs
     ]
+    print("DEBUG 4")
     qdrant_client.upsert(collection_name=collection_name, points=points)
 
-    print(f"{len(points)} documents stored successfully in collection '{collection_name}'.")
+

@@ -7,17 +7,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 
 # Importation de tes modules nettoyés
-from .ingestion.pdf_loader import partition_document
+from .ingestion.pdf_loader import partition_document, filter_image_elements
 from .ingestion.chunker import create_chunks
 from .ingestion.analyze_content import separate_content_types
 from .db.postgres import store_chunks_batch
 from .embeddings.embedder import vectorize_documents
 from .embeddings.summarizing import summarise_chunks
 from .vector_store.qdrant_service import store_vectors_incrementally
-from .rag.retriever import search_top_k
+from .rag.retriever import retrieve_chunks
 from .rag.answer_generator import generate_answer_with_history
 from .rag.reranker import rerank_results
 from .rag.query_rewriter import rewrite_query
+
 
 app = FastAPI(title="Dawask RAG Prototype")
 # Indispensable pour que l'UI (frontend) puisse appeler Docker (backend)
@@ -29,6 +30,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+os.environ["PYTHONUTF8"] = "1"
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -62,7 +65,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
 
         #  Partition of PDF
         t0 = time.perf_counter()
-        elements = partition_document(file_path)
+        elements = filter_image_elements(partition_document(file_path))
         t1 = time.perf_counter()
         print("🔥 PDF PARTIIONNED 🔥")
 
@@ -79,8 +82,8 @@ async def ingest_pdf(file: UploadFile = File(...)):
         for chunk in chunks:
             analyzed_chunks.append(separate_content_types(chunk))
         
-        # we store them in postgress, with the proper doc_id
-        store_chunks_batch(analyzed_chunks, doc_id)
+        # we store them in postgress, with the proper doc_id + keep the chunk ids in order to keep the same ids for qdrant
+        chunk_ids = store_chunks_batch(analyzed_chunks, doc_id)
         t3 = time.perf_counter()
         print("🔥 Chunks stored 🔥")
 
@@ -90,11 +93,11 @@ async def ingest_pdf(file: UploadFile = File(...)):
         # cleaned_chunks = export_chunks_to_json(analyzed_chunks) IF DEBUG
 
         # we summarise them to prepare the embedding
-        summarised_chunks = summarise_chunks(analyzed_chunks)
+        summarised_chunks = summarise_chunks(analyzed_chunks, chunk_ids)
         print("🔥 Chunks smmarized 🔥")
-
-
+        
         vectorised_chunks = vectorize_documents(summarised_chunks)
+
         t4 = time.perf_counter()
         print("🔥 Chunks vectorized 🔥")
 
@@ -103,7 +106,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
         
         original_filename = file.filename if file.filename else "unknown_file"
 
-        store_vectors_incrementally(vectorized_docs=vectorised_chunks,doc_id = doc_id)
+        store_vectors_incrementally(vectorized_docs=vectorised_chunks)
         print("🔥 vectored chunks stored 🔥")
 
         
@@ -138,7 +141,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
 chat_history = []
 
 @app.get("/query")
-async def query_rag(question: str, limit: int = 8):
+async def query_rag(question: str, limit: int = 15):
     """
     Endpoint to process RAG queries with a Retrieve-then-Rerank pipeline.    
     """
@@ -146,25 +149,28 @@ async def query_rag(question: str, limit: int = 8):
 
     try:
         # 1. Rewrite the question BEFORE retrieval
-
         standalone_query = rewrite_query(question, chat_history)
 
         # 2. Retrieve
-                
-        initial_chunks = search_top_k(standalone_query, limit=16)
+        print ("Debug 1")
+         
+        initial_chunks = retrieve_chunks(standalone_query, limit=16)
+        print ("Debug 2")
 
         if not initial_chunks:
             return {"answer": "Je n'ai pas trouvé de documents pertinents pour répondre a ta demande. :/", "sources": []}
-        
+
         # 3. Rerank the results
         # This will re-order the 10 chunks and return the top 'limit' (default 8)
         # Based on deep semantic understanding
 
         refined_chunks = rerank_results(standalone_query, initial_chunks, top_n=limit)
+        print ("Debug 3")
 
         # 4. Generate Answer using the refined context
         # The LLM now receives only the most pertinent information
         answer = generate_answer_with_history(question, refined_chunks, chat_history)
+        print ("Debug 4")
 
         chat_history.append({"role": "user", "content": question})
         chat_history.append({"role": "assistant", "content": answer})

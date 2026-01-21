@@ -2,6 +2,7 @@
 FROM python:3.11-slim
 
 # Force l'utilisation de l'UTF-8 pour éviter les erreurs d'accents
+RUN pip3 install ansible
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 ENV PYTHONIOENCODING=utf-8

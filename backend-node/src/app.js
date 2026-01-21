@@ -17,6 +17,12 @@ app.use(morgan('dev')); // Logs of requests
 // --- Configuration des URLs ---
 const FASTAPI_URL = process.env.FASTAPI_URL || 'http://fastapi_rag:8000';
 
+// Allows our frontend to communicate with nodegateway
+app.use(cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // --- Routes de monitoring ---
 app.get('/test-python', async (req, res) => { // Test pour voir si les containers backends peuvent commumiquer dans le docker compose
@@ -39,7 +45,7 @@ app.get('/health', (req, res) => {
 });
 
 // --- Importation des routes fonctionnelles ---
-app.use('/api/pdf', require('./routes/pdfRoutes'));
+app.use('/api', require('./routes/Routes'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

@@ -2,10 +2,10 @@ import os
 from langchain_core.documents import Document
 from .create_enhanced_ai_summary import create_ai_enhanced_summary
 
-def summarise_chunks(organized_chunks):
+def summarise_chunks(organized_chunks, chunk_ids):
     langchain_documents = []
 
-    for chunk in organized_chunks:
+    for chunk, chunk_id in zip(organized_chunks, chunk_ids):
         text = chunk["text"]
         tables = chunk["tables"]
         images = chunk["images_base64"]
@@ -25,11 +25,7 @@ def summarise_chunks(organized_chunks):
         doc = Document(
             page_content=enhanced_content,
             metadata={
-                "original_content": {
-                    "raw_text": text,
-                    "tables_html": tables,
-                    "images_base64": images
-                }
+                "chunk_id": str(chunk_id)
             }
         )
 

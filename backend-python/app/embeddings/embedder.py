@@ -21,9 +21,9 @@ def vectorize_documents(docs): # docs which are the summarized chunks
     vectors = embedding_client.embed_documents(texts) #we embed all the list of texts to get a list of vectors
     
     vectorized_docs = []
-    for doc,vector in zip(docs,vectors):
+    for chunk,vector in zip(docs,vectors):
         vectorized_docs.append({
-            "metadata": doc.metadata, #basically the original elements: "rawtext", "tables_html", and "images_base64" # type: ignore
+            "chunk_id": chunk.metadata["chunk_id"], #basically the original elements: "rawtext", "tables_html", and "images_base64" # type: ignore
             "vector": vector #float numbers
         })
     print("First chunk text:", texts[0][:100], "...")  # tronqué à 100 caractères

@@ -56,8 +56,21 @@ RÈGLES STRICTES À RESPECTER :
 PRINCIPE DIRECTEUR :
 Ton objectif est d'être utile et pédagogique tout en restant 100% fidèle au contenu des documents. Aide l'utilisateur au maximum avec ce qui est disponible, mais ne franchis jamais la ligne en ajoutant des informations externes."""
 
+def get_system_instruction_rewriter():
+    return """Tu es un réécrivain de requêtes.
+Ta SEULE tâche consiste à réécrire la dernière question de l'utilisateur
+en une question autonome et entièrement explicite, EN FRANCAIS.
 
-def call_gpt_4o_mini(content_list):
+Règles :
+- Utilise UNIQUEMENT l'historique de la conversation.
+- Ne réponds PAS à la question.
+- N'ajoute PAS de nouvelles informations.
+- Ne fais PAS de déductions.
+- Si l'intention est ambiguë, conserve l'ambiguïté.
+- Ne produis QUE la requête réécrite.
+"""
+
+def call_gpt_4o_mini(content_list, summarizing = False):
     """Function: call to openai's llm gpt-4o-mini, or gpt 4.1 nano, with the content_list parameter as a payload"""
 
     api_key = os.getenv("OPENAI_API_KEY")
@@ -76,7 +89,7 @@ def call_gpt_4o_mini(content_list):
     "messages": [
         {
             "role": "system", 
-            "content": get_system_instruction_answer_generation() # Texte simple autorisé ici
+            "content": get_system_instruction_rewriter() if summarizing == True else get_system_instruction_answer_generation() # Texte simple autorisé ici
         },
         {
             "role": "user",
@@ -107,18 +120,16 @@ def generate_answer_with_history(question, context_chunks,chat_history=None):
     try:
         for i, chunk in enumerate(context_chunks):
             # On récupère les données structurées (text, tables, images)
-            metadata = chunk.get('metadata', {})
-            data = metadata.get('original_content', {}) # original content, which is text tables and images
             
             chunk_repr = f"--- EXTRAIT {i+1} ---\n"
             
             # Ajout du texte
-            if data.get('raw_text'):
-                chunk_repr += f"TEXTE: {data['raw_text']}\n"
+            if chunk['text'] != "":
+                chunk_repr += f"TEXTE: {chunk['text']}\n"
             
             # Ajout des tableaux (en HTML ou Markdown)
-            if data.get('tables_html'):
-                for j, table in enumerate(data['tables_html']):
+            if chunk['tables'] != []:
+                for j, table in enumerate(chunk['tables']):
                     chunk_repr += f"\n[TABLEAU {j+1}]:\n{table}\n"
 
             #Les images sont dans un input séparé       
@@ -156,8 +167,7 @@ def generate_answer_with_history(question, context_chunks,chat_history=None):
         content_list = [{"type": "text", "text": prompt}]
 
         for chunk in context_chunks: # Re picking every chunks to take into account images aswell
-            data = chunk.get("metadata", {}).get("original_content", {})
-            for base64_image in data.get("images_base64", []):
+            for base64_image in chunk["images_base64"]:
                 content_list.append({
                     "type": "image_url",
                     "image_url": {

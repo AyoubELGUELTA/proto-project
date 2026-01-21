@@ -21,3 +21,31 @@ exports.sendToPythonForPdfIngestion = async (file) => {
     });
     return response.data;
 };
+
+/* Interroge le moteur RAG pour obtenir une réponse basée sur les documents indexés */
+exports.queryRAG = async (question, limit = 15) => {
+    try {
+        const response = await axios.get(`${FASTAPI_URL}/query`, {
+            params: {
+                question: question,
+                limit: limit
+            },
+            timeout: 60000 // 1 minute suffit généralement pour une génération de réponse
+        });
+        return response.data;
+    } catch (error) {
+        throw new Error(error.response?.data?.detail || error.message);
+    }
+};
+
+
+exports.clearChatHistory = async () => {
+    try {
+        const response = await axios.post(`${FASTAPI_URL}/clear-history`, {}, {
+            timeout: 5000 //rapide, car on purge une liste
+        });
+        return response.data;
+    } catch (error) {
+        throw new Error(error.response?.data?.detail || error.message);
+    }
+};

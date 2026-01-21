@@ -1,19 +1,7 @@
 import os
 from .answer_generator import call_gpt_4o_mini
 
-def get_system_instruction_rewriter():
-    return """Tu es un réécrivain de requêtes.
-Ta SEULE tâche consiste à réécrire la dernière question de l'utilisateur
-en une question autonome et entièrement explicite, EN FRANCAIS.
 
-Règles :
-- Utilise UNIQUEMENT l'historique de la conversation.
-- Ne réponds PAS à la question.
-- N'ajoute PAS de nouvelles informations.
-- Ne fais PAS de déductions.
-- Si l'intention est ambiguë, conserve l'ambiguïté.
-- Ne produis QUE la requête réécrite.
-"""
 
 def rewrite_query(latest_question, chat_history):
     """"Rewrite the latest_question of the user by taking into account the chat_history 
@@ -21,6 +9,9 @@ def rewrite_query(latest_question, chat_history):
     
     if not chat_history:
         return latest_question
+    
+    print (chat_history)
+    
     try:
         # On limite l'historique (configurable via env pour économiser des tokens)
         history_limit = int(os.getenv("CHAT_HISTORY_LIMIT", 6))
@@ -33,7 +24,7 @@ def rewrite_query(latest_question, chat_history):
     
 
             prompt = f"""
-        {get_system_instruction_rewriter()}
+        ROLE : PRENDS EN COMPTE LES INSTRUCTIONS SYSTEMES QUE TU AS REÇUES.
 
         Historique de la conversation:
         {history_str}
@@ -42,9 +33,9 @@ def rewrite_query(latest_question, chat_history):
         {latest_question}
         """
 
-        content_list = [{"type": "input_text", "text": prompt}]
+        content_list = [{"type": "text", "text": prompt}]
 
-        rewritten_query = call_gpt_4o_mini(content_list)
+        rewritten_query = call_gpt_4o_mini(content_list, summarizing= True)
 
         # Sécurité : Si le LLM renvoie n'importe quoi ou vide
         if not rewritten_query or len(rewritten_query.strip()) < 2:
