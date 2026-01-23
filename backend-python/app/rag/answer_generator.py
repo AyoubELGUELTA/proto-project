@@ -68,6 +68,10 @@ Règles :
 - Ne fais PAS de déductions.
 - Si l'intention est ambiguë, conserve l'ambiguïté.
 - Ne produis QUE la requête réécrite.
+- Ajoute a la fin de la requete, d'apres les documents, ou selon les données présentes. 
+  Ex : Question initiale: "Quel age a-t-il?" Réecriture indépendante de la question: "Quel age a Ayoub, selon les documents fournis?"
+- Si tu NE PEUX PAS réecrire la requete, car elle est trop ambigue ou n'a aucun rapport avec l'historique, 
+  alors tu RENVOIE EXACTEMENT la meme question que tu as reçue initalement.
 """
 
 def call_gpt_4o_mini(content_list, summarizing = False):

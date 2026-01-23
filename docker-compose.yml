@@ -45,11 +45,9 @@ services:
 
     env_file: .env
     build: ./backend-node
-    environment:
-      - FASTAPI_URL=http://fastapi_rag:8000
     volumes:
       - ./backend-node:/app
-      - /app/node_modules
+      - /backend-node/node_modules
     depends_on:
       - fastapi
       - postgres

@@ -25,11 +25,12 @@ exports.askQuestion = async (req, res) => {
         console.log(`[Node] Question validée : "${question}" (limit: ${limit})`);
         
         const result = await pythonService.queryRAG(question, limit);
-        
+    
         res.status(200).json({
             status: "success",
-            sources: result.sources, // le front aura besoin des sources pour l'UX
-            data: result
+            answer: result.answer,
+            standalone_query: result.standalone_query || "pas de standalone query",
+            sources: result.sources // le front aura besoin des sources pour l'UX
         });
     } catch (error) {
         console.error("[Node Error Query]", error.message);
