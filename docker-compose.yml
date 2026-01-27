@@ -47,7 +47,7 @@ services:
     build: ./backend-node
     volumes:
       - ./backend-node:/app
-      - /backend-node/node_modules
+      - /app/node_modules
     depends_on:
       - fastapi
       - postgres

@@ -19,5 +19,6 @@ export const ragApi = {
   // Pose une question
   askQuestion: (question) => api.get('/query', { params: { question } }),
   // Reset l'historique
-  clearHistory: () => api.post('/clear-history')
+  clearHistory: () => api.post('/clear-history'), 
+  getIngestedDocuments: () => api.get('/documents'),
 };

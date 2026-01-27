@@ -77,8 +77,9 @@ class SolonEmbeddingClient:
         """
         Embed une query unique.
         """
+        instructional_query = f"query: {query}"
         payload = {
-            "inputs": query,
+            "inputs": instructional_query,
             "options": {"wait_for_model": True}
         }
         try:

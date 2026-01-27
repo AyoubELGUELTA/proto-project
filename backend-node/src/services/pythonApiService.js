@@ -16,7 +16,7 @@ exports.sendToPythonForPdfIngestion = async (file) => {
     const response = await axios.post(`${FASTAPI_URL}/ingest_pdf`, 
         form, 
         {headers: { ...form.getHeaders() },
-        timeout: 300000 // 5 minutes pour les gros PDF
+        timeout: 10000000 // 5 minutes pour les gros PDF
 
     });
     return response.data;
@@ -42,10 +42,23 @@ exports.queryRAG = async (question, limit = 15) => {
 exports.clearChatHistory = async () => {
     try {
         const response = await axios.post(`${FASTAPI_URL}/clear-history`, {}, {
-            timeout: 5000 //rapide, car on purge une liste
+            timeout: 15000 //rapide, car on purge une liste
         });
         return response.data;
     } catch (error) {
         throw new Error(error.response?.data?.detail || error.message);
     }
 };
+
+exports.getDocuments = async () => {
+    try {
+    const response = await axios.get(`${FASTAPI_URL}/ingested-documents`, {}, {
+            timeout: 5000 //rapide, car on récupere une liste
+        });
+    return response.data.documents;
+
+}
+catch (error) {
+        throw new Error(error.response?.data?.detail || error.message);
+    }
+}

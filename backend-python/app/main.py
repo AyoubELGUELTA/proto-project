@@ -10,7 +10,7 @@ from typing import List
 from .ingestion.pdf_loader import partition_document, filter_image_elements
 from .ingestion.chunker import create_chunks
 from .ingestion.analyze_content import separate_content_types
-from .db.postgres import store_chunks_batch
+from .db.postgres import store_chunks_batch, get_documents, get_or_create_document, init_db
 from .embeddings.embedder import vectorize_documents
 from .embeddings.summarizing import summarise_chunks
 from .vector_store.qdrant_service import store_vectors_incrementally
@@ -36,9 +36,27 @@ os.environ["PYTHONUTF8"] = "1"
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+@app.on_event("startup")
+async def startup_event():
+    print("🚀 Starting up FastAPI...")
+    try:
+        init_db()
+        print("✅ Database tables are ready.")
+    except Exception as e:
+        print(f"❌ Failed to initialize database on startup: {e}")
+
 @app.get("/") #allows to check if nodejs commuicate or not with fastapi, health check nothing more
 def read_root():
     return {"status": "ok", "message": "FastAPI is hungry for PDFs"}
+
+@app.get("/ingested-documents")
+async def list_documents():
+    try:
+        docs = get_documents()
+        print ("DEBUG PYTHON : ", docs)
+        return {"documents": docs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/ingest_pdf")
@@ -51,11 +69,9 @@ async def ingest_pdf(file: UploadFile = File(...)):
         print("🔥 INGEST_PDF ROUTE EXECUTED 🔥")
         start_time = time.perf_counter()
 
-        
-
         # creation of a unique document id
-        doc_id = str(uuid.uuid4())
-        file_path = os.path.join(UPLOAD_DIR, f"{doc_id}.pdf")
+        doc_uuid = get_or_create_document(file.filename)
+        file_path = os.path.join(UPLOAD_DIR, f"{doc_uuid}.pdf")
         
         # local save of the PDF TO DELETE IN PROD
 
@@ -65,7 +81,9 @@ async def ingest_pdf(file: UploadFile = File(...)):
 
         #  Partition of PDF
         t0 = time.perf_counter()
+
         elements = filter_image_elements(partition_document(file_path))
+
         t1 = time.perf_counter()
         print("🔥 PDF PARTIIONNED 🔥")
 
@@ -83,7 +101,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
             analyzed_chunks.append(separate_content_types(chunk))
         
         # we store them in postgress, with the proper doc_id + keep the chunk ids in order to keep the same ids for qdrant
-        chunk_ids = store_chunks_batch(analyzed_chunks, doc_id)
+        chunk_ids = store_chunks_batch(analyzed_chunks, doc_uuid)
         t3 = time.perf_counter()
         print("🔥 Chunks stored 🔥")
 
@@ -119,18 +137,18 @@ async def ingest_pdf(file: UploadFile = File(...)):
 
         return {
             "status": "success",
-            "document": doc_id,
+            "document": doc_uuid,
             "filename": original_filename,
             "chunks_stored": len(chunks),
             "first_chunk_summarized": first_chunk_preview,
             "timings": {
                 "partition": round(t1 - t0, 2),
                 "chunking": round(t2 - t1, 2),
-                "clean_chunks + storage Postgres": round(t3-t2),
-                "summarize + vectorize chunks": round(t4-t3),
-                "qdrant vector db storage": round(end_time-t4),
+                "storage_postgres": round(t3 - t2, 2), 
+                "vectorize": round(t4 - t3, 2),
+                "qdrant": round(end_time - t4, 2),
                 "total": duration
-                }
+            }
 
         }
 
@@ -141,7 +159,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
 chat_history = []
 
 @app.get("/query")
-async def query_rag(question: str, limit: int = 15):
+async def query_rag(question: str, limit: int = 35):
     """
     Endpoint to process RAG queries with a Retrieve-then-Rerank pipeline.    
     """
@@ -154,17 +172,16 @@ async def query_rag(question: str, limit: int = 15):
         # 2. Retrieve
         print ("Debug 1")
          
-        initial_chunks = retrieve_chunks(standalone_query, limit=16)
+        initial_chunks = retrieve_chunks(standalone_query, limit)
         print ("Debug 2")
 
         if not initial_chunks:
             return {"answer": "Je n'ai pas trouvé de documents pertinents pour répondre a ta demande. :/", "sources": []}
 
         # 3. Rerank the results
-        # This will re-order the 10 chunks and return the top 'limit' (default 8)
+        # This will re-order the 35 chunks and return the top 'limit' (default 16)
         # Based on deep semantic understanding
-
-        refined_chunks = rerank_results(standalone_query, initial_chunks, top_n=limit)
+        refined_chunks = rerank_results(standalone_query, initial_chunks, top_n=15)
         print ("Debug 3")
 
         # 4. Generate Answer using the refined context

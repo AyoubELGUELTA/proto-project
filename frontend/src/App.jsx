@@ -1,26 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ragApi } from './api/ragClient';
-import { Send, Upload, Trash2, Loader2 } from 'lucide-react';
+import { Send, Upload, Trash2, Loader2, User, Bot } from 'lucide-react';
 
 const SourceAccordion = ({ sources }) => {
   const [isOpen, setIsOpen] = React.useState(false);
-
+  const [expandedSource, setExpandedSource] = useState(null);
+  
   return (
     <div className="mt-4 pt-4 border-t border-gray-100">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-blue-600 flex items-center gap-1"
+        className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-blue-600 flex items-center gap-1 transition-colors"
       >
         {isOpen ? '⬇ Cacher les sources' : `➡ Voir les ${sources.length} sources`}
       </button>
       
       {isOpen && (
-        <div className="mt-2 space-y-2 animate-in fade-in slide-in-from-top-1">
-          {sources.map((source, idx) => (
-            <div key={idx} className="text-[11px] bg-gray-50 p-2 rounded border border-gray-100 text-gray-600 italic">
-              "{source.text?.substring(0, 200)}..."
-            </div>
-          ))}
+        <div className="mt-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+          {sources.map((source, idx) => {
+            const isExpanded = expandedSource === idx;
+            return (
+              <div 
+                key={idx} 
+                onClick={() => setExpandedSource(isExpanded ? null : idx)}
+                className={`text-[11px] p-2 rounded border transition-all cursor-pointer ${
+                  isExpanded 
+                    ? 'bg-blue-50 border-blue-200 text-gray-800' 
+                    : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                <div className="flex justify-between items-start">
+                  <span className="font-semibold text-[9px] text-blue-400 mb-1 block">SOURCE #{idx + 1}</span>
+                  <span className="text-[9px]">{isExpanded ? 'Réduire ▲' : 'Lire tout ▼'}</span>
+                </div>
+                
+                <p className={`${isExpanded ? '' : 'line-clamp-2 italic'}`}>
+                  "{source.text}"
+                </p>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -32,6 +51,58 @@ function App() {
   const [messages, setMessages] = useState([]); // { role: 'user'|'ai', text: '', sources: [] }
   const [isUploading, setIsUploading] = useState(false);
   const [isAnswerLoading, setIsAnswerLoading] = useState(false); 
+  const [ingestedFiles, setIngestedFiles] = useState([]);
+  const lastUserMsgRef = useRef(null);
+  const lastAiMsgRef = useRef(null);
+
+
+  useEffect(() => { // To Scroll to the last message
+  if (messages.length === 0) return;
+
+  const lastMessage = messages[messages.length - 1];
+
+  if (lastMessage.role === 'user') {
+    // 1. On cadre la question de l'utilisateur en haut
+    lastUserMsgRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } 
+  else if (lastMessage.role === 'ai') {
+    // 2. Dès que l'IA répond, on glisse doucement vers sa réponse
+    // On attend un tout petit délai (100ms) pour laisser le DOM s'ajuster
+    setTimeout(() => {
+      lastAiMsgRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  }
+}, [messages]);
+
+
+  useEffect(() => { //To Reset history chat every time page is refreshed
+    const resetChat = async () => {
+      try {
+        // On appelle la route de reset de ton gateway
+        await ragApi.clearHistory(); 
+        console.log("🗑️ Historique nettoyé pour une nouvelle session de test");
+      } catch (err) {
+        console.error("Impossible de nettoyer l'historique:", err);
+      }
+    };
+
+    resetChat();
+  }, []); // Le tableau vide [] signifie "exécuter une seule fois au chargement"
+
+  const fetchFiles = async () => {
+  try {
+    const res = await ragApi.getIngestedDocuments();
+    console.log("Docs reçus 'res':", res);
+    setIngestedFiles(res.data.documents);
+  } catch (err) {
+    console.error("Erreur lors de la récupération des fichiers", err);
+  }
+};
+
+  useEffect(() => { //Fetch Files every time we get to the page / or refresh a page.
+  fetchFiles();
+}, []);
+
   const handleQuery = async (e) => {
     e.preventDefault();
     if (!question.trim()) return;
@@ -56,35 +127,138 @@ function App() {
     }
   };
 
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Optionnel : Petite restriction de sécurité front
+    if (file.type !== "application/pdf") {
+        alert("Seuls les fichiers PDF sont acceptés.");
+        return;
+    }
+
+    setIsUploading(true);
+    try {
+        // On utilise la méthode déjà prête dans ton ragClient
+        await ragApi.ingestPdf(file); 
+        await fetchFiles()
+        alert("C'est bon ! Votre document a été lu et appris !");
+    } catch (err) {
+        console.error("Erreur Ingestion:", err);
+        alert("Erreur lors de l'ingestion.");
+    } finally {
+        setIsUploading(false);
+        // Reset l'input pour pouvoir uploader le même fichier si besoin
+        event.target.value = null; 
+    }
+};
+
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar - Upload */}
       <div className="w-1/4 bg-white border-r p-6 flex flex-col space-y-6">
-        <h1 className="text-xl font-bold text-blue-600">Solon RAG</h1>
-        <div className="border-2 border-dashed border-gray-200 rounded-lg p-4 text-center">
-           <p className="text-sm text-gray-500 mb-4">Ingérer un nouveau document</p>
-           {/* On ajoutera le composant FileUploader ici plus tard */}
-           <button className="flex items-center justify-center w-full py-2 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition">
-             <Upload className="w-4 h-4 mr-2" /> Sélectionner
-           </button>
+  <h1 className="text-xl font-bold text-blue-600">Dawa RAG</h1>
+  <div className="border-2 border-dashed border-gray-200 rounded-lg p-4 text-center">
+    <p className="text-sm text-gray-500 mb-4">Ingérer un nouveau document</p>
+    
+    {/* On utilise un label pour styliser l'input file invisible */}
+    <label className={`flex items-center justify-center w-full py-2 rounded-md transition cursor-pointer ${
+      isUploading ? 'bg-gray-100 text-gray-400' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+    }`}>
+      {isUploading ? (
+        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+      ) : (
+        <Upload className="w-4 h-4 mr-2" />
+      )}
+      
+      <span>{isUploading ? 'Traitement...' : 'Sélectionner'}</span>
+
+      {/* L'input réel est caché mais activé par le clic sur le label */}
+      <input 
+        type="file" 
+        className="hidden" 
+        onChange={handleFileUpload} 
+        accept=".pdf"
+        disabled={isUploading} 
+      />
+    </label>
+    
+    {isUploading && (
+      <p className="text-[10px] text-blue-500 mt-2 animate-pulse">
+        Vectorisation en cours...
+      </p>
+    )}
+  </div>
+
+  {/*Documents ingérés par la rag deja*/}
+
+<div className="mt-8">
+  <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
+    {/* On utilise || 0 pour éviter le crash si length est inaccessible */}
+    Documents indexés ({(ingestedFiles || []).length})
+  </h2>
+  
+  <div className="space-y-2 overflow-y-auto max-h-64 pr-2">
+    {/* On s'assure que ingestedFiles est traité comme un tableau */}
+    {(ingestedFiles || []).map((filename, idx) => (
+      <div key={idx} className="flex items-center p-2 bg-gray-50 rounded-md border border-gray-100 group">
+        <div className="w-6 h-6 bg-blue-100 text-blue-600 rounded flex items-center justify-center mr-3 text-[10px] font-bold">
+          PDF
         </div>
+        <span className="text-xs text-gray-600 truncate flex-1" title={filename}>
+          {filename}
+        </span>
       </div>
+    ))}
+    
+    {/* Message si vide */}
+    {(!ingestedFiles || ingestedFiles.length === 0) && (
+      <p className="text-xs text-gray-400 italic">Aucun document pour le moment.</p>
+    )}
+  </div>
+</div>
+
+</div>
+
+
+
+
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         <div className="flex-1 p-6 overflow-y-auto space-y-4">
-          {messages.map((m, i) => (
-<div className={`max-w-2xl p-4 rounded-lg ${m.role === 'user' ? 'bg-blue-600 text-white ml-auto' : 'bg-white border text-gray-800'}`}>
-  <p>{m.text}</p> 
-  
-  
-  {/* Affichage des sources si elles existent */}
-  {m.role === 'ai' && m.sources && m.sources.length > 0 && (
-    <SourceAccordion sources={m.sources} />
-  )}
-  
-</div>
-          ))}
+          {messages.map((m, i) => {
+    // On vérifie si c'est le TOUT DERNIER message de la liste et s'il vient du 'user'
+    const isLastMessage = i === messages.length - 1;  
+    const isAi = m.role === 'ai';  
+    return (
+    <div 
+      key={i} 
+      ref={isLastMessage ? (isAi ? lastAiMsgRef : lastUserMsgRef) : null}
+      className={`flex items-start gap-3 ${isAi ? 'flex-row' : 'flex-row-reverse'}`}
+    >
+      {/* Icône Avatar */}
+      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center border ${
+        isAi ? 'bg-white border-gray-200 text-blue-600' : 'bg-blue-600 border-blue-500 text-white'
+      }`}>
+        {isAi ? <Bot size={18} /> : <User size={18} />}
+      </div>
+
+      {/* Bulle de message */}
+      <div className={`max-w-2xl p-4 rounded-2xl shadow-sm ${
+        isAi 
+          ? 'bg-white border border-gray-100 text-gray-800 rounded-tl-none' 
+          : 'bg-blue-600 text-white rounded-tr-none'
+      }`}>
+        <p className="leading-relaxed">{m.text}</p>
+        
+        {isAi && m.sources && m.sources.length > 0 && (
+          <SourceAccordion sources={m.sources} />
+        )}
+      </div>
+    </div>
+  );
+})}
           {isAnswerLoading && (
     <div className="flex items-center space-x-2 text-gray-400 text-sm animate-pulse p-4">
       <div className="flex space-x-1">
@@ -92,7 +266,7 @@ function App() {
         <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
         <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
       </div>
-      <span>Solon analyse vos documents...</span>
+      <span>Analyse de vos documents...</span>
     </div>
   )}
         </div>

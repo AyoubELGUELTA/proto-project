@@ -38,10 +38,17 @@ def init_db():
         
     cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
 
-    create_table_query = """
+    create_table_documents_query ="""
+    CREATE TABLE IF NOT EXISTS documents (
+        doc_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        filename TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """
+    create_table_chunks_query = """
     CREATE TABLE IF NOT EXISTS chunks (
         chunk_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        doc_id TEXT NOT NULL,
+        doc_id UUID REFERENCES documents(doc_id) ON DELETE CASCADE,
         chunk_index INTEGER NOT NULL,
         chunk_text TEXT NOT NULL,
         chunk_tables JSONB,
@@ -51,18 +58,36 @@ def init_db():
     CREATE UNIQUE INDEX IF NOT EXISTS idx_chunks_doc_chunk
     ON chunks(doc_id, chunk_index);
     """
-    
-    cur.execute(create_table_query)
+    cur.execute(create_table_documents_query)
+    cur.execute(create_table_chunks_query)
     conn.commit()
     cur.close()
     conn.close()
-    print("✅ Database initialized (table 'chunks' checked/created).")
+    print("✅ Database initialized (tables 'documents', 'chunks' checked/created).")
 
+def get_or_create_document(filename):
+    query = """
+    INSERT INTO documents (filename) 
+    VALUES (%s) 
+    ON CONFLICT (filename) DO UPDATE SET filename = EXCLUDED.filename
+    RETURNING doc_id;
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (filename,))
+            doc_id = cur.fetchone()[0]
+        conn.commit()
+    return doc_id
 
+def get_documents():
+    # On récupère le nom et l'ID (au cas où on en ait besoin plus tard)
+    query = "SELECT filename FROM documents ORDER BY created_at DESC;"
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            return [row[0] for row in cur.fetchall()]
 
 def store_chunks_batch(analyzed_chunks, doc_id):
-    init_db()  # ideally move this to app startup later
-
     insert_query = """
         INSERT INTO chunks (
             doc_id,

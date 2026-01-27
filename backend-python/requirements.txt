@@ -17,6 +17,7 @@ langchain==0.1.0
 langchain-core==0.1.10
 langchain-community==0.0.13
 langchain-openai
+docling
 
 # --- Bases de données + embeddings---
 psycopg2-binary==2.9.9
