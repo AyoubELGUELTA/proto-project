@@ -1,73 +1,43 @@
 import os
-from unstructured.partition.pdf import partition_pdf
-import base64
+from docling.datamodel.base_models import InputFormat   
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.document_converter import DocumentConverter, PdfFormatOption
 
+def get_docling_converter():
+    """
+    Configure le convertisseur avec les options de vision.
+    C'est ici que Docling utilise le GPU/MPS de ton Mac.
+    """
+    pipeline_options = PdfPipelineOptions()
+    
+    # 1. Capture des images pour GPT-4.1 Nano
+    pipeline_options.images_scale = 2.0 
+    pipeline_options.generate_page_images = True  # Permet d'extraire les crops
+    
+    # 2. Activation de la compréhension des tableaux
+    pipeline_options.do_table_structure = True
+    
+    # 3. OCR (si tes notes sont parfois des scans de qualité moyenne)
+    pipeline_options.do_ocr = True 
+
+    converter = DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+        }
+    )
+    return converter
 
 def partition_document(file_path: str):
-    """Extract elements from PDF using unstructured"""
-    
-    extraction_strategy = os.getenv("PDF_EXTRACTION_STRATEGY", "hi_res")
-
+    """
+    Renvoie l'objet 'doc' complet.
+    """
     try:
-        elements = partition_pdf(
-            filename=file_path,
-            strategy=extraction_strategy,
-            infer_table_structure=True,
-            languages=["fra", "eng"],
-            extract_image_block_types=["Image"],
-            extract_image_block_to_payload=True
-        )
-        return elements
+        converter = get_docling_converter()
+        result = converter.convert(file_path)
+        
+        print(f"✅ Document partitionné avec Docling : {file_path}")
+        return result.document
+        
     except Exception as e:
-        print(f"❌ Erreur lors du partitionnement du PDF: {e}")
+        print(f"❌ Erreur lors du partitionnement Docling: {e}")
         raise
-
-
-MAX_IMAGE_MB = 5
-MAX_IMAGE_PIXELS = 10_000 * 10_000  # garde-fou absurde
-
-def filter_image_elements(elements):
-    filtered = []
-    print ("voici les elements : ", elements)
-
-    for el in elements:
-        # --- On garde tout sauf les images problématiques ---
-        if el.category != "Image":
-            filtered.append(el)
-            continue
-
-        meta = el.metadata
-
-        # --- Sécurité ---
-        if meta is None or not hasattr(meta, "image_base64"):
-            print("⚠️ Image sans payload base64, ignorée")
-            continue
-
-        b64 = meta.image_base64
-        if not b64:
-            continue
-
-        # --- Taille ---
-        try:
-            size_bytes = len(base64.b64decode(b64))
-        except Exception:
-            print("⚠️ Base64 invalide, image ignorée")
-            continue
-
-        size_mb = size_bytes / (1024 * 1024)
-
-        if size_mb > MAX_IMAGE_MB:
-            print(f"⚠️ Image ignorée (trop lourde): {size_mb:.2f} MB")
-            continue
-
-        # --- Dimensions (optionnel) ---
-        w = getattr(meta, "image_width", None)
-        h = getattr(meta, "image_height", None)
-
-        if w and h and (w * h) > MAX_IMAGE_PIXELS:
-            print(f"⚠️ Image ignorée (dimensions excessives): {w}x{h}")
-            continue
-
-        filtered.append(el)
-
-    return filtered

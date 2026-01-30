@@ -14,7 +14,7 @@ def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) 
     """
 
     # BYPASS LLM if no multimodal content, economy on credits
-    if not tables and not images:
+    if not images:
         return text
 
     try:
@@ -32,37 +32,27 @@ def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) 
         # STRICT, NON-EXPANSIVE PROMPT
 
         prompt_text = f"""
-You are processing a document chunk for semantic indexing.
+        Tu es un expert en indexation sémantique.
+        
+        RÈGLES STRICTES :
+        
+        - ANALYSE les TABLEAUX en Markdown présents dans le texte : convertis leurs données importantes en phrases descriptives factuelles (ex: "Le tableau indique que la ville de Médine compte X puits...").
+        - ANALYSE les IMAGES fournies et intègre UNIQUEMENT leurs infos factuelles manquantes au texte.
+        - Génère UNIQUEMENT une description textuelle factuelle des informations qu'ils apportent. 
+        - Si les images n'apportent rien de plus, ne renvoie rien.
+        - Ne répète pas le texte original, UNIQUEMENT les infos des tableaux et des images.
+        - Si aucune image/tableau n'est utile, RENVOIE "RAS".
+        - Ta description ne doit ABSOLUMENT pas dépasser les 325 caracteres.
+        
+        TEXTE DE RÉFÉRENCE (pouvant contenir des tableaux) :
+        {text}
+        """
 
-IMPORTANT RULES:
-- The TEXT CONTENT is already correct and must NOT be rewritten.
-- Do NOT summarize the text.
-- Do NOT paraphrase the text.
-- Do NOT expand the text.
-- Only integrate factual information coming from TABLES and/or IMAGES.
-- If tables or images do not add meaningful information, return the text unchanged.
-
-STYLE CONSTRAINTS:
-- Keep the output as close as possible to the original text length
-- No bullet points unless strictly necessary
-- No questions
-- No synonym lists
-- No SEO wording
-- No repetition
-- Neutral, factual French
-- Maximum length: 900 characters
-
-CONTENT TO PROCESS:
-
-TEXT CONTENT:
-{text}
-"""
-
-        # Add tables if present
-        if tables:
-            prompt_text += "\nTABLES:\n"
-            for i, table in enumerate(tables):
-                prompt_text += f"Table {i + 1}:\n{table}\n"
+        # # Add tables if present
+        # if tables:
+        #     prompt_text += "\nTABLES:\n"
+        #     for i, table in enumerate(tables):
+        #         prompt_text += f"Table {i + 1}:\n{table}\n" OBSOLETE, TABLES ARE IN THE TEXT ATTRIBUTE ASWELL
 
         # Build message content
         message_content: List[Dict[str, Any]] = [
@@ -78,11 +68,15 @@ TEXT CONTENT:
 
         # Invoke LLM
         message = HumanMessage(
-            content=cast(List[Dict[str, Any]], message_content)# type: ignore[arg-type], because everythings work fine
+            content=message_content
         ) 
         response = llm.invoke([message])
+        if "RAS" not in response.content.upper():
+            enhanced_content = text + "\n\n[INFO COMPLÉMENTAIRE] : " + response.content
+        else:
+            enhanced_content = text
 
-        return normalize_llm_content(response.content)
+        return normalize_llm_content(enhanced_content)
 
     except Exception as e:
         print(f"⚠️ Erreur LLM Vision: {e}")

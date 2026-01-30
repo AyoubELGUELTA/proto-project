@@ -3,37 +3,37 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.0
 python-multipart==0.0.9
 python-dotenv==1.0.1
+pydantic==2.8.2
+pydantic-settings==2.4.0
 
-# --- Ingestion & PDF (Unstructured) ---
-unstructured[all-docs]==0.15.0
-pytesseract==0.3.10
-python-magic==0.4.27
-pdf2image==1.17.0
-pdfminer.six==20221105
-pi-heif
-unstructured-inference
-unstructured-pytesseract
-langchain==0.1.0
-langchain-core==0.1.10
-langchain-community==0.0.13
-langchain-openai
-docling
+# --- Ingestion & PDF (Docling) ---
+docling>=2.55.0
+docling-core>=2.8.0
+# NumPy doit être < 2.0 pour compatibilité Docling
+numpy>=1.26.4,<2.0.0
 
-# --- Bases de données + embeddings---
+# --- LangChain ---
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community==0.3.0
+langchain-openai==0.2.0
+langchain-docling>=0.1.0  
+
+# --- Bases de données ---
 psycopg2-binary==2.9.9
+sqlalchemy==2.0.30
 qdrant-client==1.11.0
-sentence-transformers
-onnxruntime 
-sqlalchemy
 
 # --- IA & Embeddings ---
-torch --index-url https://download.pytorch.org/whl/cpu
-transformers==4.44.0
-sentence-transformers==3.0.1
-cohere==5.5.0
-openai==1.40.0
+# PyTorch CPU-only (compatible Docling)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0,<2.7.0  # Versions compatibles Docling
+transformers>=4.45.0,<5.0.0
+sentence-transformers>=3.1.0
+onnxruntime
+openai>=1.40.0
+cohere>=5.5.0
 
 # --- Utilitaires ---
 requests==2.32.3
-pydantic==2.8.2
-pydantic-settings==2.4.0
+python-magic==0.4.27

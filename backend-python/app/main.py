@@ -2,14 +2,15 @@ import os
 import uuid
 import time
 import shutil
+import gc
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 
 # Importation de tes modules nettoyés
-from .ingestion.pdf_loader import partition_document, filter_image_elements
+from .ingestion.pdf_loader import partition_document
 from .ingestion.chunker import create_chunks
-from .ingestion.analyze_content import separate_content_types
+from .ingestion.separate_content_types import separate_content_types
 from .db.postgres import store_chunks_batch, get_documents, get_or_create_document, init_db
 from .embeddings.embedder import vectorize_documents
 from .embeddings.summarizing import summarise_chunks
@@ -82,23 +83,21 @@ async def ingest_pdf(file: UploadFile = File(...)):
         #  Partition of PDF
         t0 = time.perf_counter()
 
-        elements = filter_image_elements(partition_document(file_path))
+        doc = partition_document(file_path)
 
         t1 = time.perf_counter()
         print("🔥 PDF PARTIIONNED 🔥")
 
 
         #  Chunking
-        chunks = create_chunks(elements)
+        chunks = create_chunks(doc)
         t2 = time.perf_counter()
         print("🔥 Chunks done 🔥")
 
 
         # Seperate the content type of each chunk
 
-        analyzed_chunks = []
-        for chunk in chunks:
-            analyzed_chunks.append(separate_content_types(chunk))
+        analyzed_chunks = [separate_content_types(c) for c in chunks]
         
         # we store them in postgress, with the proper doc_id + keep the chunk ids in order to keep the same ids for qdrant
         chunk_ids = store_chunks_batch(analyzed_chunks, doc_uuid)
@@ -135,6 +134,8 @@ async def ingest_pdf(file: UploadFile = File(...)):
         # On sécurise l'affichage pour éviter l'erreur ASCII au cas où
         first_chunk_preview = str(summarised_chunks[0])[:200] # Un aperçu court
 
+        del elements, chunks, analyzed_chunks
+        gc.collect() # Force la libération de la RAM sur ton Mac
         return {
             "status": "success",
             "document": doc_uuid,
@@ -151,6 +152,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
             }
 
         }
+   
 
     except Exception as e:
         print(f"❌ Erreur Ingestion: {e}")

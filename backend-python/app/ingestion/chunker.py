@@ -1,37 +1,62 @@
+
 import os
-from unstructured.chunking.title import chunk_by_title
+from functools import lru_cache
+from docling.chunking import HybridChunker
+from docling_core.transforms.chunker.tokenizer.huggingface import HuggingFaceTokenizer 
+from transformers import AutoTokenizer
 
-def create_chunks(elements, chunk_size=None):
-    """
-    Découpe sémantique par titre. 
-    L'intelligence d'Unstructured regroupe les paragraphes sous leurs titres respectifs.
-    """   
+@lru_cache(maxsize=1)
+def get_chunker():
+    """Cache le chunker pour éviter de recharger le tokenizer"""
+    max_tokens = int(os.getenv("CHUNK_SIZE_TOKENS", 1500))
     
-    # 1. Récupération de la taille depuis l'environnement ou paramètre
-    if chunk_size is None:
-        chunk_size = int(os.getenv("CHUNK_SIZE", 3000))
+    hf_tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3", trust_remote_code=True)
+    tokenizer = HuggingFaceTokenizer(
+        tokenizer=hf_tokenizer,
+        max_tokens=max_tokens
+    )
+    
+    return HybridChunker(tokenizer=tokenizer, merge_peers=True)
 
-    # 2. Sécurité : si la liste d'éléments est vide
-    if not elements:
-        print("⚠️ Aucun élément reçu pour le chunking (PDF vide ou erreur de parsing).")
-        return []
+def create_chunks(doc):
+    """
+    Découpe le document en respectant la hiérarchie (Layout-Aware).
+    """
+    chunker = get_chunker()  # Réutilise le chunker en cache
     
     try:
-        chunks = chunk_by_title(
-            elements,
-            multipage_sections=True,
-            combine_text_under_n_chars=500,
-            max_characters=chunk_size,
-            new_after_n_chars=2000,
-            include_orig_elements=True,
-        )
-        
-        print(f"✅ Chunking réussi : {len(chunks)} chunks créés.")
+        chunks = list(chunker.chunk(doc))
+        print(f"✅ Layout-Aware Chunking réussi : {len(chunks)} chunks créés.")
+        # 🔍 Debug : vérifier la taille des chunks
+        for i, chunk in enumerate(chunks[:3]):  # 3 premiers chunks
+            num_tokens = len(hf_tokenizer.encode(chunk.text))
+            num_chars = len(chunk.text)
+            print(f"  📄 Chunk {i}: {num_tokens} tokens, {num_chars} caractères")
         return chunks
-    
     except Exception as e:
-        # En cas d'erreur de chunking, on log l'erreur et on lève une exception claire
-        print(f"❌ Erreur critique lors du chunking : {str(e)}")
-        # On pourrait retourner elements tel quel, mais il vaut mieux raise 
-        # pour éviter d'envoyer des données mal structurées à la suite du pipeline.
-        raise RuntimeError(f"Le découpage sémantique a échoué : {e}")
+        print(f"❌ Erreur lors du chunking Docling : {e}")
+        raise
+
+
+
+def create_chunks(doc):
+    """
+    Découpe le document en respectant la hiérarchie (Layout-Aware).
+    """
+    # On récupère la taille depuis l'env (Solon accepte max 512, on laisse une marge pour les résumés de l IA...
+    max_tokens = int(os.getenv("CHUNK_SIZE_TOKENS", 430))
+    
+    # Initialisation du Chunker Intelligent
+    chunker = HybridChunker(
+        tokenizer="OrdalieTech/Solon-embeddings-large-0.1", 
+        max_tokens=max_tokens,
+        merge_peers=True  # Regroupe les petits paragraphes de même niveau
+    )
+    
+    try:
+        chunks = list(chunker.chunk(doc))
+        print(f"✅ Layout-Aware Chunking réussi : {len(chunks)} chunks créés.")
+        return chunks
+    except Exception as e:
+        print(f"❌ Erreur lors du chunking Docling : {e}")
+        raise
