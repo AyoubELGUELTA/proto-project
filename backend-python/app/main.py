@@ -134,7 +134,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
         # On sécurise l'affichage pour éviter l'erreur ASCII au cas où
         first_chunk_preview = str(summarised_chunks[0])[:200] # Un aperçu court
 
-        del elements, chunks, analyzed_chunks
+        del doc, chunks, analyzed_chunks
         gc.collect() # Force la libération de la RAM sur ton Mac
         return {
             "status": "success",

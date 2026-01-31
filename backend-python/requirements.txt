@@ -22,7 +22,7 @@ langchain-docling>=0.1.0
 # --- Bases de données ---
 psycopg2-binary==2.9.9
 sqlalchemy==2.0.30
-qdrant-client==1.11.0
+qdrant-client==1.11.0   
 
 # --- IA & Embeddings ---
 # PyTorch CPU-only (compatible Docling)
