@@ -97,20 +97,32 @@ async def ingest_pdf(file: UploadFile = File(...)):
 
         # Seperate the content type of each chunk
 
-        analyzed_chunks = [separate_content_types(c) for c in chunks]
-        
-        # we store them in postgress, with the proper doc_id + keep the chunk ids in order to keep the same ids for qdrant
-        chunk_ids = store_chunks_batch(analyzed_chunks, doc_uuid)
+        enriched_chunks = []
+        for i, chunk in enumerate(chunks):
+            print(f"\n📦 Traitement chunk {i}/{len(chunks)}")
+            
+            content = separate_content_types(chunk, doc)
+            
+            # Créer un chunk enrichi
+            enriched_chunk = {
+                'chunk_index': i,
+                'text': content['text'],
+                'headings': content['headings'],
+                'heading_full': ' > '.join(content['headings']) if content['headings'] else 'Sans titre',
+                'tables': content['tables'],
+                'images_base64': content['images_base64']
+            }
+            
+            enriched_chunks.append(enriched_chunk)        
+          
+            # we store them in postgress, with the proper doc_id + keep the chunk ids in order to keep the same ids for qdrant
+        chunk_ids = store_chunks_batch(enriched_chunks, doc_uuid)
         t3 = time.perf_counter()
+        
         print("🔥 Chunks stored 🔥")
 
-
-
-        # # we clean their format to have a better summarising
-        # cleaned_chunks = export_chunks_to_json(analyzed_chunks) IF DEBUG
-
         # we summarise them to prepare the embedding
-        summarised_chunks = summarise_chunks(analyzed_chunks, chunk_ids)
+        summarised_chunks = summarise_chunks(enriched_chunks, chunk_ids)
         print("🔥 Chunks smmarized 🔥")
         
         vectorised_chunks = vectorize_documents(summarised_chunks)
@@ -134,13 +146,13 @@ async def ingest_pdf(file: UploadFile = File(...)):
         # On sécurise l'affichage pour éviter l'erreur ASCII au cas où
         first_chunk_preview = str(summarised_chunks[0])[:200] # Un aperçu court
 
-        del doc, chunks, analyzed_chunks
+        del doc, chunks
         gc.collect() # Force la libération de la RAM sur ton Mac
         return {
             "status": "success",
             "document": doc_uuid,
             "filename": original_filename,
-            "chunks_stored": len(chunks),
+            "chunks_stored": len(enriched_chunks),
             "first_chunk_summarized": first_chunk_preview,
             "timings": {
                 "partition": round(t1 - t0, 2),
@@ -161,7 +173,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
 chat_history = []
 
 @app.get("/query")
-async def query_rag(question: str, limit: int = 35):
+async def query_rag(question: str, limit: int = 40):
     """
     Endpoint to process RAG queries with a Retrieve-then-Rerank pipeline.    
     """
@@ -181,9 +193,9 @@ async def query_rag(question: str, limit: int = 35):
             return {"answer": "Je n'ai pas trouvé de documents pertinents pour répondre a ta demande. :/", "sources": []}
 
         # 3. Rerank the results
-        # This will re-order the 35 chunks and return the top 'limit' (default 16)
+        # This will re-order the 35 chunks and return the top 'limit' (default 20)
         # Based on deep semantic understanding
-        refined_chunks = rerank_results(standalone_query, initial_chunks, top_n=15)
+        refined_chunks = rerank_results(standalone_query, initial_chunks, top_n=20)
         print ("Debug 3")
 
         # 4. Generate Answer using the refined context

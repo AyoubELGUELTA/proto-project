@@ -54,7 +54,8 @@ RÈGLES STRICTES À RESPECTER :
    - Mais reformule toujours en utilisant les termes exacts des documents dans ta réponse.
 
 PRINCIPE DIRECTEUR :
-Ton objectif est d'être utile et pédagogique tout en restant 100% fidèle au contenu des documents. Aide l'utilisateur au maximum avec ce qui est disponible, mais ne franchis jamais la ligne en ajoutant des informations externes."""
+Ton objectif est d'être utile et pédagogique tout en restant 100 pourcent fidèle au contenu des documents. Aide l'utilisateur au maximum avec ce qui est disponible, mais ne franchis jamais la ligne en ajoutant des informations externes. Ne COMPLEXIFIE PAS ta réponse 
+avec des informations parasytes si l'utilisateur ne le demande pas, mais suggere a la fin de ta réponse si il veut en savoir plus sur ce que tu as trouvé."""
 
 def get_system_instruction_rewriter():
     return """Tu es un réécrivain de requêtes.
@@ -74,8 +75,9 @@ Règles :
   alors tu RENVOIE EXACTEMENT la meme question que tu as reçue initalement.
 """
 
-def call_gpt_4o_mini(content_list, summarizing = False):
-    """Function: call to openai's llm gpt-4o-mini, or gpt 4.1 nano, with the content_list parameter as a payload"""
+def call_gpt_4o_mini(content_list, summarizing = False, max_tokens = 3000):
+    """Function: call to openai's llm gpt-4o-mini, or gpt 4.1 nano, with the content_list parameter as a payload
+    the summarizing parameter is set True if we want the model to summarize images or tables during the ingestion pipline"""
 
     api_key = os.getenv("OPENAI_API_KEY")
 
@@ -100,8 +102,8 @@ def call_gpt_4o_mini(content_list, summarizing = False):
             "content": content_list
         }
     ],
-    "temperature": 0,
-    "max_tokens": 3000
+    "temperature": 0.05,
+    "max_tokens": max_tokens
     }   
 
     try:
@@ -129,7 +131,7 @@ def generate_answer_with_history(question, context_chunks,chat_history=None):
             
             # Ajout du texte
             if chunk['text'] != "":
-                chunk_repr += f"TEXTE: {chunk['text']}\n"
+                chunk_repr += f" {chunk['text']}\n"
             
             # Ajout des tableaux (en HTML ou Markdown)
             if chunk['tables'] != []:
@@ -154,6 +156,7 @@ def generate_answer_with_history(question, context_chunks,chat_history=None):
         {history_str}
 
         CONTEXTE EXTRAIT DU PDF:
+
         {context_text}
 
         QUESTION ACTUELLE: 

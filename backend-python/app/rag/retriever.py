@@ -2,12 +2,12 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 import os
 from ..embeddings.hf_solon_client_embedder import SolonEmbeddingClient
-from ..embeddings.local_embedder import LocalSolonEmbeddingClient
+from ..embeddings.local_embedder import LocalEmbeddingClient
 from psycopg2.extras import RealDictCursor
 from ..db.postgres import get_connection
 
 env = os.getenv("ENVIRONMENT", "development")
-embedding_client = SolonEmbeddingClient() if env == "production" else LocalSolonEmbeddingClient()
+embedding_client = SolonEmbeddingClient() if env == "production" else LocalEmbeddingClient()
 
 
 def search_top_k(standalone_query, doc_id=None, collection_name="all_documents", limit=12):
@@ -65,6 +65,8 @@ def fetch_chunks_by_ids(chunk_ids):
             doc_id,
             chunk_index,
             chunk_text,
+            chunk_heading_full,
+            chunk_headings,
             chunk_tables,
             chunk_images_base64,
             created_at
@@ -78,18 +80,30 @@ def fetch_chunks_by_ids(chunk_ids):
     cur.close()
     conn.close()
 
-    return [
-        {
+    enriched_chunks = []
+    for row in rows:
+        heading = row["chunk_heading_full"]
+        text = row["chunk_text"]
+        
+        if heading and heading != "Sans titre":
+            # Format Markdown avec le titre en en-tête
+            enriched_text = f"# --- {heading} ---\n\n{text}"
+        else:
+            enriched_text = text
+        
+        enriched_chunks.append({
             "chunk_id": str(row["chunk_id"]),
-            "doc_id": row["doc_id"],
+            "doc_id": str(row["doc_id"]),
             "chunk_index": row["chunk_index"],
-            "text": row["chunk_text"],
+            "text": enriched_text,  # ✅ Texte enrichi avec heading
+            "heading_full": heading,  # ✅ Heading séparé pour métadonnées
+            "headings": row["chunk_headings"],  # ✅ Hiérarchie complète
             "tables": row["chunk_tables"],
             "images_base64": row["chunk_images_base64"],
             "created_at": row["created_at"]
-        }
-        for row in rows
-    ]
+        })
+    
+    return enriched_chunks
 
 def retrieve_chunks(query, limit=12):
     # 1. On cherche les IDs et les scores dans Qdrant

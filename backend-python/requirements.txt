@@ -11,6 +11,7 @@ docling>=2.55.0
 docling-core>=2.8.0
 # NumPy doit être < 2.0 pour compatibilité Docling
 numpy>=1.26.4,<2.0.0
+PyMuPDF>=1.23.0, <1.25.0
 
 # --- LangChain ---
 langchain>=0.3.0

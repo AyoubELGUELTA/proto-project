@@ -3,7 +3,7 @@ import torch
 from sentence_transformers import SentenceTransformer
 from typing import List
 
-class LocalSolonEmbeddingClient:
+class LocalEmbeddingClient:
     def __init__(self):
         # "mps" tells the Mac to use its Metal GPU (Silicon chip)
         # If MPS isn't available, it defaults to CPU

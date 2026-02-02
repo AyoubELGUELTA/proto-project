@@ -43,7 +43,7 @@ def store_vectors_incrementally(vectorized_docs, collection_name="all_documents"
 
     if not exists:
         print("DEBUG 2 - creating collection")
-        vector_size = len(vectorized_docs[0]["vector"])
+        vector_size = len(vectorized_docs[0]["embedding"])
         qdrant_client.create_collection(
             collection_name=str(collection_name),
             vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
@@ -54,7 +54,7 @@ def store_vectors_incrementally(vectorized_docs, collection_name="all_documents"
     points = [
         PointStruct(
             id=doc["chunk_id"], # Use unique IDs for every chunk
-            vector=doc["vector"]
+            vector=doc["embedding"]
             # WE ACCESS THE PAYLOAD FROM POSTGRES, WE ONLY STORE VECTORES + CHUNK IDS IN QDRANT
         ) for doc in vectorized_docs
     ]

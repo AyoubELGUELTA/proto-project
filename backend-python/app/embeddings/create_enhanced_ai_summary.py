@@ -42,7 +42,7 @@ def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) 
         - Si les images n'apportent rien de plus, ne renvoie rien.
         - Ne répète pas le texte original, UNIQUEMENT les infos des tableaux et des images.
         - Si aucune image/tableau n'est utile, RENVOIE "RAS".
-        - Ta description ne doit ABSOLUMENT pas dépasser les 325 caracteres.
+        
         
         TEXTE DE RÉFÉRENCE (pouvant contenir des tableaux) :
         {text}
