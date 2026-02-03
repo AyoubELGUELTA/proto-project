@@ -43,7 +43,7 @@ async def create_identity_chunk(
     
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1-nano-2025-04-14",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.02,  # Basse température pour cohérence
             max_tokens=600,   # ~400 mots max
@@ -65,52 +65,67 @@ async def create_identity_chunk(
         # Fallback : créer une fiche minimale
         return create_fallback_identity(doc_title, toc)
 
-
 def extract_table_of_contents(doc: DoclingDocument) -> str:
     """
     Extrait le sommaire du document.
     
-    Stratégies:
-    1. Chercher un heading "Sommaire" ou "Table des matières"
-    2. Extraire les premiers headings de niveau 1
+    L'API Docling utilise doc.iterate_items() ou doc.export_to_markdown()
     """
     toc_text = ""
-    
-    # Stratégie 1 : Chercher explicitement un sommaire
-    for i, item in enumerate(doc.main_text):
-        item_text = getattr(item, 'text', '').strip().lower()
+    try:
+        # Stratégie 1 : Utiliser export_to_markdown pour avoir la structure
+        # (Docling génère automatiquement les headings en Markdown)
+        markdown = doc.export_to_markdown()
         
-        if 'sommaire' in item_text or 'table des matières' in item_text:
-            # Extraire les 20 prochains items (probable contenu du sommaire)
-            toc_items = doc.main_text[i:i+20]
-            toc_text = "\n".join([
-                getattr(item, 'text', '') 
-                for item in toc_items 
-                if getattr(item, 'text', '').strip()
-            ])
-            break
-    
-    # Stratégie 2 : Fallback - Extraire tous les headings de niveau 1
-    if not toc_text:
+        # Extraire les lignes qui commencent par # (headings)
+        lines = markdown.split('\n')
         headings = []
-        for item in doc.main_text[:50]:  # Limiter aux 50 premiers items
-            if hasattr(item, 'label') and 'heading' in str(item.label).lower():
-                text = getattr(item, 'text', '').strip()
-                if text and len(text) < 100:  # Éviter les faux positifs
-                    headings.append(text)
         
+        for line in lines[:100]:  # Limiter aux 100 premières lignes
+            stripped = line.strip()
+            if stripped.startswith('#'):
+                # Nettoyer le heading (enlever les #)
+                heading = stripped.lstrip('#').strip()
+                
+                # Filtrer les headings trop longs (probablement pas un titre)
+                if heading and len(heading) < 100:
+                    # Détecter si c'est un sommaire
+                    if 'sommaire' in heading.lower() or 'table des matières' in heading.lower():
+                        # Extraire les 20 prochaines lignes après "Sommaire"
+                        idx = lines.index(line)
+                        toc_lines = lines[idx:idx+25]
+                        toc_text = "\n".join([l.strip() for l in toc_lines if l.strip()])
+                        return toc_text
+                    
+                    headings.append(heading)
+        
+        # Stratégie 2 : Si pas de sommaire explicite, retourner les headings trouvés
         if headings:
             toc_text = "\n".join(headings)
-    
-    return toc_text or "Sommaire non détecté"
+            return toc_text
+        
+        # Stratégie 3 : Fallback - Itérer sur les items du document
+        if not toc_text and hasattr(doc, 'body') and hasattr(doc.body, 'children'):
+            for item in doc.body.children[:50]:
+                if hasattr(item, 'label') and 'heading' in str(item.label).lower():
+                    text = getattr(item, 'text', '').strip()
+                    if text and len(text) < 100:
+                        headings.append(text)
+            
+            if headings:
+                toc_text = "\n".join(headings)
 
+    except Exception as e:
+        print(f"⚠️ Erreur extraction sommaire : {e}")
+
+    return toc_text or "Sommaire non détecté"
 
 def sample_document_pages(
     doc: DoclingDocument, 
-    start_pages: int = 5, 
-    middle_pages: int = 5, 
-    end_pages: int = 5,
-    max_chars: int = 8000
+    start_pages: int = 6, 
+    middle_pages: int = 6, 
+    end_pages: int = 6,
+    max_chars: int = 12500
 ) -> Dict[str, Any]:
     """
     Échantillonne le document pour l'analyse LLM.
@@ -182,7 +197,7 @@ def build_identity_prompt(
     pages_used = sampled_text_data.get("pages_used", [])
     
     return f"""
-Tu es un assistant spécialisé dans la création de FICHES IDENTITÉ ultra-condensées pour des documents religieux et éducatifs.
+Tu es un assistant spécialisé dans la création de FICHES IDENTITÉ ultra-condensées pour des documents religieux et/ou éducatifs.
 
 DOCUMENT ANALYSÉ:
 Titre: {doc_title or "Non spécifié"}
@@ -196,7 +211,7 @@ EXTRAITS DU DOCUMENT:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-TÂCHE: Crée une FICHE IDENTITÉ ultra-condensée (MAX 350 mots).
+TÂCHE: Crée une FICHE IDENTITÉ ultra-condensée (MAX 400 mots).
 
 FORMAT STRICT À RESPECTER:
 
@@ -206,7 +221,7 @@ FORMAT STRICT À RESPECTER:
 
 📚 TITRE: [titre exact]
 📖 TYPE: [biographie / cours / essai / etc.]
-🎯 SUJET: [résumé en 1 phrase de quoi parle le document]
+🎯 SUJET: [résumé en 2,3 phrases de quoi parle le document]
 
 STRUCTURE DU DOCUMENT:
 [Liste numérotée des chapitres/sections AVEC numéros de page]
@@ -214,14 +229,15 @@ Exemple:
 1. Chapitre 1 (p.15-32)
 2. Chapitre 2 (p.33-46)
 ...
+A défault de ne pas avoir des chapitres/sections, donne la structure du document, comment c'est organisé.
 
 🔑 THÈMES CLÉS: [3-5 mots-clés séparés par virgules]
-🕌 CONTEXTE: [époque, lieu, cadre si pertinent - 1 ligne max]
+[OPTIONNEL] 🕌 CONTEXTE: [époque, lieu, cadre si pertinent - 1,2 lignes max], si tu trouves du contexte dans les pages échantillonées.ß
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 CONTRAINTES CRITIQUES:
-- MAX 350 mots (compte-les !)
+- MAX 400 mots (compte-les !)
 - Pas de détails narratifs ou anecdotes
 - Juste la structure + thèmes + index
 - Format ultra-scannable pour un LLM
@@ -241,14 +257,14 @@ def create_fallback_identity(doc_title: Optional[str], toc: str) -> Dict[str, An
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📚 TITRE: {doc_title or "Titre non détecté"}
-📖 TYPE: Document religieux
+📖 TYPE: Document religieux et/ou éducatif/scolaire
 🎯 SUJET: Contenu en cours d'analyse
 
 STRUCTURE DU DOCUMENT:
 {toc}
 
 🔑 THÈMES CLÉS: À déterminer
-🕌 CONTEXTE: Islam
+🕌 CONTEXTE: Islam et/ou Académique
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """.strip()

@@ -11,7 +11,8 @@ from typing import List
 from .ingestion.pdf_loader import partition_document
 from .ingestion.chunker import create_chunks
 from .ingestion.separate_content_types import separate_content_types
-from .db.postgres import store_chunks_batch, get_documents, get_or_create_document, init_db
+from app.ingestion.create_identity_chunk import create_identity_chunk
+from .db.postgres import store_chunks_batch, get_documents, get_or_create_document, init_db, store_identity_chunk
 from .embeddings.embedder import vectorize_documents
 from .embeddings.summarizing import summarise_chunks
 from .vector_store.qdrant_service import store_vectors_incrementally
@@ -73,9 +74,6 @@ async def ingest_pdf(file: UploadFile = File(...)):
         # creation of a unique document id
         doc_uuid = get_or_create_document(file.filename)
         file_path = os.path.join(UPLOAD_DIR, f"{doc_uuid}.pdf")
-        
-        # local save of the PDF TO DELETE IN PROD
-
 
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -92,11 +90,26 @@ async def ingest_pdf(file: UploadFile = File(...)):
         #  Chunking
         chunks = create_chunks(doc)
         t2 = time.perf_counter()
-        print("🔥 Chunks done 🔥")
+        print(f"🔥 Chunks done, 📄 {len(chunks)} chunks créés🔥")
 
+        print("\n🔄 Création de la fiche identité du document...")
+        identity_data = await create_identity_chunk(
+            doc=doc,
+            doc_id=doc_uuid,
+            doc_title=file.filename
+        )
+        
+        # Stocker le chunk identité
 
-        # Seperate the content type of each chunk
+        identity_chunk_id = await store_identity_chunk(
+            doc_id=doc_uuid,
+            identity_text=identity_data["identity_text"],
+            pages_sampled=identity_data.get("pages_sampled", [])
+        )
 
+        print(f"✅ Fiche identité créée : {identity_data['token_count']} tokens")
+        print(f"   Pages échantillonnées : {identity_data.get('pages_sampled', [])}")
+        
         enriched_chunks = []
         for i, chunk in enumerate(chunks):
             print(f"\n📦 Traitement chunk {i}/{len(chunks)}")
@@ -150,9 +163,9 @@ async def ingest_pdf(file: UploadFile = File(...)):
         gc.collect() # Force la libération de la RAM sur ton Mac
         return {
             "status": "success",
-            "document": doc_uuid,
+            "doc_id": doc_uuid,
             "filename": original_filename,
-            "chunks_stored": len(enriched_chunks),
+            "chunks_stored": len(chunk_ids),
             "first_chunk_summarized": first_chunk_preview,
             "timings": {
                 "partition": round(t1 - t0, 2),
