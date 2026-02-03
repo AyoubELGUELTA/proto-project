@@ -69,7 +69,7 @@ async def init_db():
                 chunk_heading_full TEXT,
                 chunk_page_numbers INTEGER[] DEFAULT '{}',
                 chunk_tables JSONB DEFAULT '[]',
-                chunk_images_base64 JSONB DEFAULT '[]',
+                chunk_images_urls TEXT[] DEFAULT '{}',  
                 chunk_type VARCHAR(20) DEFAULT 'content',
                 is_identity BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -174,7 +174,7 @@ async def store_chunks_batch(chunks: List[Dict[str, Any]], doc_id: str) -> List[
                         chunk_heading_full,
                         chunk_page_numbers, 
                         chunk_tables,
-                        chunk_images_base64,
+                        chunk_images_urls,
                         chunk_type,       
                         is_identity      
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -187,7 +187,7 @@ async def store_chunks_batch(chunks: List[Dict[str, Any]], doc_id: str) -> List[
                     chunk_data.get("heading_full", ""),
                     chunk_data.get("page_numbers", []), 
                     json.dumps(chunk_data.get("tables", [])),
-                    json.dumps(chunk_data.get("images_base64", [])),
+                    chunk_data.get("images_urls", []),                    
                     chunk_data.get("chunk_type", "content"),  
                     chunk_data.get("is_identity", False)
                 )
@@ -218,7 +218,7 @@ async def get_chunk_with_metadata(chunk_id: str) -> Optional[Dict[str, Any]]:
                 chunk_headings,
                 chunk_heading_full,
                 chunk_tables,
-                chunk_images_base64,
+                chunk_images_urls,
                 chunk_page_numbers,
                 chunk_type,
                 is_identity
@@ -233,7 +233,7 @@ async def get_chunk_with_metadata(chunk_id: str) -> Optional[Dict[str, Any]]:
                 "headings": row['chunk_headings'] if row['chunk_headings'] else [],
                 "heading_full": row['chunk_heading_full'],
                 "tables": row['chunk_tables'] if row['chunk_tables'] else [],
-                "images_base64": row['chunk_images_base64'] if row['chunk_images_base64'] else [],
+                "images_urls": row['chunk_images_urls'] if row['chunk_images_urls'] else [],
                 "chunk_page_numbers": row['chunk_page_numbers'] if row['chunk_page_numbers'] else [],
                 "chunk_type": row['chunk_type'],
                 "is_identity": row['is_identity']
@@ -265,7 +265,7 @@ async def store_identity_chunk(
                 chunk_heading_full,
                 chunk_page_numbers,
                 chunk_tables,
-                chunk_images_base64,
+                chunk_images_urls,
                 chunk_type,
                 is_identity
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -278,7 +278,7 @@ async def store_identity_chunk(
             "DOCUMENT_IDENTITY",
             pages_sampled,
             json.dumps([]),
-            json.dumps([]),
+            [],
             'identity',
             True
         )

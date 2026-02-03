@@ -11,7 +11,7 @@ from typing import List
 from .ingestion.pdf_loader import partition_document
 from .ingestion.chunker import create_chunks, extract_single_image_base64
 from .ingestion.separate_content_types import separate_content_types
-from app.ingestion.create_identity_chunk import create_identity_chunk
+from .ingestion.create_identity_chunk import create_identity_chunk
 from .db.postgres import store_chunks_batch, get_documents, get_or_create_document, init_db, store_identity_chunk
 from .embeddings.embedder import vectorize_documents
 from .embeddings.summarizing import summarise_chunks
@@ -20,6 +20,7 @@ from .rag.retriever import retrieve_chunks
 from .rag.answer_generator import generate_answer_with_history
 from .rag.reranker import rerank_results
 from .rag.query_rewriter import rewrite_query
+from .utils.s3_storage import storage
 
 
 app = FastAPI(title="Dawask RAG Prototype")
@@ -133,21 +134,23 @@ async def ingest_pdf(file: UploadFile = File(...)):
                         print(f"   ✨ IMAGE TROUVÉE DANS LES MÉTADONNÉES DU CHUNK {i} !")
 
             content = separate_content_types(chunk, doc)
-            if not content['chunk_images_base64']:
-                # On récupère les pages couvertes par ce chunk
+
+            if 'chunk_images_urls' not in content:
+                content['chunk_images_urls'] = []
+
+            # LIAISON FORCÉE
+            if not content.get('chunk_images_base64'): # Si pas d'image détectée par Docling
                 chunk_pages = content["chunk_page_numbers"] 
-                
-                # On scanne les images du document pour voir si l'une d'elles est sur ces pages
                 for item, _level in doc.iterate_items():
                     if "PictureItem" in str(type(item)):
-                        # Récupérer la page de l'image via ses provenances
                         item_page = item.prov[0].page_no if item.prov else None
-                        
                         if item_page in chunk_pages:
-                            print(f"   ✨ Liaison forcée : Image page {item_page} ajoutée au chunk {i}")
-                            img_b64 = extract_single_image_base64(item, doc)
-                            if img_b64:
-                                content['chunk_images_base64'].append(img_b64)
+                            image_obj = item.get_image(doc)
+                            if image_obj:
+                                # UPLOAD VERS MINIO
+                                url = storage.upload_image(image_obj)
+                                if url:
+                                    content['chunk_images_urls'].append(url)
 
 
             # Créer un chunk enrichi
@@ -158,7 +161,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
                 'heading_full': content["chunk_heading_full"] if content["chunk_heading_full"] else 'Sans titre',
                 'page_numbers': content["chunk_page_numbers"],
                 'tables': content['chunk_tables'],
-                'images_base64': content['chunk_images_base64']
+                'images_urls': content['chunk_images_urls']
             }
             
             enriched_chunks.append(enriched_chunk)        
@@ -195,7 +198,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
         first_chunk_preview = str(summarised_chunks[0])[:200] # Un aperçu court
 
         del doc, chunks
-        gc.collect() # Force la libération de la RAM sur ton Mac
+        gc.collect() # Force la libération de la RAM sur le Mac
         return {
             "status": "success",
             "doc_id": doc_uuid,

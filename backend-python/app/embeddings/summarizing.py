@@ -11,7 +11,7 @@ def summarise_chunks(organized_chunks, chunk_ids):
     for chunk, chunk_id in zip(organized_chunks, chunk_ids):
         text = chunk["text"]
         tables = chunk["tables"]
-        images = chunk["images_base64"]
+        images = chunk["images_urls"]
 
         # ✅ Enrichir avec l'IA si tableaux ou images
         if tables or images:

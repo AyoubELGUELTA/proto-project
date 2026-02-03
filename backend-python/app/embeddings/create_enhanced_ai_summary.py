@@ -20,13 +20,13 @@ def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) 
     try:
 
         api_key = os.getenv("OPENAI_API_KEY")
-        model_name = os.getenv("SUMMARIZER_MODEL_NAME", "gpt-4.1-nano-2025-04-14")
+        model_name = os.getenv("SUMMARIZER_MODEL_NAME", "gpt-5-nano-2025-08-07")
 
         # Initialize LLM (vision-capable for images)
         llm = ChatOpenAI(
             model=model_name,
             api_key = api_key,
-            temperature=0
+            # temperature=0
         )
 
         # STRICT, NON-EXPANSIVE PROMPT
@@ -60,11 +60,15 @@ def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) 
         ]
 
         # Add images if present
-        for image_base64 in images:
-            message_content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
-            })
+        for url in images:
+            if isinstance(url, str) and url.startswith("http"):
+                message_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": url, 
+                        "detail": "low" 
+                    }
+                })
 
         # Invoke LLM
         message = HumanMessage(
