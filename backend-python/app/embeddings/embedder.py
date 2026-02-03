@@ -45,6 +45,6 @@ def vectorize_documents(docs): # docs which are the summarized chunks
     print(f"\n🔍 DEBUG embedding:")
     print(f"  Type: {type(vectorized_docs[0]['embedding'])}")    
 
-    print("First chunk vector length:", len(vectorized_docs[0]))    
+    print("First chunk vector length:", len(vectorized_docs[0]["embedding"]))    
     return vectorized_docs
 

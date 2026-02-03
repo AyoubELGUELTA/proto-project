@@ -9,7 +9,7 @@ from typing import List
 
 # Importation de tes modules nettoyés
 from .ingestion.pdf_loader import partition_document
-from .ingestion.chunker import create_chunks
+from .ingestion.chunker import create_chunks, extract_single_image_base64
 from .ingestion.separate_content_types import separate_content_types
 from app.ingestion.create_identity_chunk import create_identity_chunk
 from .db.postgres import store_chunks_batch, get_documents, get_or_create_document, init_db, store_identity_chunk
@@ -42,7 +42,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 async def startup_event():
     print("🚀 Starting up FastAPI...")
     try:
-        init_db()
+        await init_db()
         print("✅ Database tables are ready.")
     except Exception as e:
         print(f"❌ Failed to initialize database on startup: {e}")
@@ -54,7 +54,7 @@ def read_root():
 @app.get("/ingested-documents")
 async def list_documents():
     try:
-        docs = get_documents()
+        docs = await get_documents()
         print ("DEBUG PYTHON : ", docs)
         return {"documents": docs}
     except Exception as e:
@@ -72,7 +72,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
         start_time = time.perf_counter()
 
         # creation of a unique document id
-        doc_uuid = get_or_create_document(file.filename)
+        doc_uuid = await get_or_create_document(file.filename)
         file_path = os.path.join(UPLOAD_DIR, f"{doc_uuid}.pdf")
 
         with open(file_path, "wb") as buffer:
@@ -82,6 +82,16 @@ async def ingest_pdf(file: UploadFile = File(...)):
         t0 = time.perf_counter()
 
         doc = partition_document(file_path)
+        # --- DEBUG IMAGES DANS LE DOC ---
+        print(f"🔍 DEBUG: Nombre de pages dans le doc: {len(doc.pages)}")
+        # Vérifier les images globales
+        num_pictures = len(list(doc.iterate_items())) # On va compter les items de type Picture
+        pictures_found = [item for item, _level in doc.iterate_items() if "PictureItem" in str(type(item))]
+        print(f"🔍 DEBUG: Nombre d'items 'PictureItem' détectés dans le doc entier: {len(pictures_found)}")
+
+        if hasattr(doc, 'pictures'):
+            print(f"🔍 DEBUG: Nombre d'entrées dans doc.pictures: {len(doc.pictures)}")
+        # --------------------------------
 
         t1 = time.perf_counter()
         print("🔥 PDF PARTIIONNED 🔥")
@@ -112,24 +122,49 @@ async def ingest_pdf(file: UploadFile = File(...)):
         
         enriched_chunks = []
         for i, chunk in enumerate(chunks):
-            print(f"\n📦 Traitement chunk {i}/{len(chunks)}")
+            # Log pour voir si le chunk contient des références
+            num_items = len(chunk.meta.doc_items) if hasattr(chunk.meta, 'doc_items') else 0
+            print(f"📦 Traitement chunk {i}/{len(chunks)} | Items rattachés: {num_items}")
             
+            # Vérifier si un PictureItem est présent dans les items du chunk
+            if num_items > 0:
+                for item in chunk.meta.doc_items:
+                    if "PictureItem" in str(type(item)):
+                        print(f"   ✨ IMAGE TROUVÉE DANS LES MÉTADONNÉES DU CHUNK {i} !")
+
             content = separate_content_types(chunk, doc)
-            
+            if not content['chunk_images_base64']:
+                # On récupère les pages couvertes par ce chunk
+                chunk_pages = content["chunk_page_numbers"] 
+                
+                # On scanne les images du document pour voir si l'une d'elles est sur ces pages
+                for item, _level in doc.iterate_items():
+                    if "PictureItem" in str(type(item)):
+                        # Récupérer la page de l'image via ses provenances
+                        item_page = item.prov[0].page_no if item.prov else None
+                        
+                        if item_page in chunk_pages:
+                            print(f"   ✨ Liaison forcée : Image page {item_page} ajoutée au chunk {i}")
+                            img_b64 = extract_single_image_base64(item, doc)
+                            if img_b64:
+                                content['chunk_images_base64'].append(img_b64)
+
+
             # Créer un chunk enrichi
             enriched_chunk = {
                 'chunk_index': i,
-                'text': content['text'],
-                'headings': content['headings'],
-                'heading_full': ' > '.join(content['headings']) if content['headings'] else 'Sans titre',
-                'tables': content['tables'],
-                'images_base64': content['images_base64']
+                'text': content['chunk_text'],
+                'headings': content['chunk_headings'],
+                'heading_full': content["chunk_heading_full"] if content["chunk_heading_full"] else 'Sans titre',
+                'page_numbers': content["chunk_page_numbers"],
+                'tables': content['chunk_tables'],
+                'images_base64': content['chunk_images_base64']
             }
             
             enriched_chunks.append(enriched_chunk)        
           
             # we store them in postgress, with the proper doc_id + keep the chunk ids in order to keep the same ids for qdrant
-        chunk_ids = store_chunks_batch(enriched_chunks, doc_uuid)
+        chunk_ids = await store_chunks_batch(enriched_chunks, doc_uuid)
         t3 = time.perf_counter()
         
         print("🔥 Chunks stored 🔥")

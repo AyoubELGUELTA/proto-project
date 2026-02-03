@@ -30,16 +30,16 @@ async def create_identity_chunk(
     toc = extract_table_of_contents(doc) #table of contents
     
     # 2. Échantillonner le document : 6 premières + 6 milieu + 6 fin
-    sampled_text = sample_document_pages(doc, 
-                                          start_pages=6, 
-                                          middle_pages=6, 
-                                          end_pages=6)
+    sampled_text = sample_document_pages(doc)
     
     # 3. Construire le prompt pour GPT-4o-mini
     prompt = build_identity_prompt(doc_title, toc, sampled_text)
+
+
     
     # 4. Appel API
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
     
     try:
         response = await client.chat.completions.create(
@@ -50,7 +50,7 @@ async def create_identity_chunk(
         )
         
         identity_text = response.choices[0].message.content.strip()
-        token_count = response.usage.total_tokens
+        token_count = response.usage.completion_tokens
         
         print(f"✅ Fiche identité créée : {token_count} tokens")
         
@@ -120,69 +120,38 @@ def extract_table_of_contents(doc: DoclingDocument) -> str:
 
     return toc_text or "Sommaire non détecté"
 
-def sample_document_pages(
-    doc: DoclingDocument, 
-    start_pages: int = 6, 
-    middle_pages: int = 6, 
-    end_pages: int = 6,
-    max_chars: int = 12500
-) -> Dict[str, Any]:
-    """
-    Échantillonne le document pour l'analyse LLM.
-    
-    Returns:
-        dict avec:
-        - text: Texte échantillonné
-        - pages_used: Liste des pages utilisées
-    """
-    total_pages = len(doc.pages) if hasattr(doc, 'pages') else 0
-    
-    if total_pages == 0:
-        # Fallback : prendre les premiers N items
-        text = "\n".join([
-            getattr(item, 'text', '') 
-            for item in doc.main_text[:100]
-        ])[:max_chars]
-        return {"text": text, "pages_used": [1]}
-    
-    # Calculer les indices des pages
-    start_indices = list(range(0, min(start_pages, total_pages)))
-    
-    middle_start = max(0, (total_pages // 2) - (middle_pages // 2))
-    middle_indices = list(range(middle_start, min(middle_start + middle_pages, total_pages)))
-    
-    end_start = max(0, total_pages - end_pages)
-    end_indices = list(range(end_start, total_pages))
-    
-    # Fusionner et dédupliquer
-    page_indices = sorted(set(start_indices + middle_indices + end_indices))
-    
-    # Extraire le texte des pages sélectionnées
-    sampled_texts = []
-    for page_idx in page_indices:
-        if page_idx < len(doc.pages):
-            page = doc.pages[page_idx]
-            # Extraire les items de cette page
-            page_items = [
-                item for item in doc.main_text 
-                if get_item_page(item) == page_idx + 1  # Page numbers start at 1
-            ]
-            page_text = "\n".join([
-                getattr(item, 'text', '') 
-                for item in page_items
-            ])
-            sampled_texts.append(f"[Page {page_idx + 1}]\n{page_text}")
-    
-    full_text = "\n\n".join(sampled_texts)
-    
-    # Tronquer si trop long
-    if len(full_text) > max_chars:
-        full_text = full_text[:max_chars] + "\n...[TRONQUÉ]"
-    
-    return {
-        "text": full_text,
-        "pages_used": [idx + 1 for idx in page_indices]
-    }
+def sample_document_pages(doc: DoclingDocument, max_chars: int = 10000) -> Dict[str, Any]:
+    try:
+        full_markdown = doc.export_to_markdown()
+        
+        if len(full_markdown) <= max_chars:
+            return {"text": full_markdown, "pages_used": ["Complet"]}
+
+        # On découpe par paragraphes (double saut de ligne) plutôt que par lignes
+        # C'est plus sémantique pour le LLM
+        paragraphs = full_markdown.split('\n\n')
+        total_p = len(paragraphs)
+        
+        # Échantillonnage : 15 début, 15 milieu, 15 fin
+        start_p = paragraphs[:15]
+        mid_idx = total_p // 2
+        mid_p = paragraphs[mid_idx-2 : mid_idx+7]
+        end_p = paragraphs[-15:]
+        
+        sampled_text = (
+            "--- DÉBUT DU DOCUMENT ---\n" + "\n\n".join(start_p) +
+            "\n\n... [CONTENU INTERMÉDIAIRE] ...\n\n" + "\n\n".join(mid_p) +
+            "\n\n... [CONTENU FINAL] ...\n\n" + "\n\n".join(end_p) +
+            "\n--- FIN DU DOCUMENT ---"
+        )
+
+        return {
+            "text": sampled_text[:max_chars], # Sécurité finale
+            "pages_used": [0] #Symbolique, structure linéaire: 15 paragraphes de Début/Milieu/Fin du doc,chunk identité est spécial
+        }
+    except Exception as e:
+        print(f"⚠️ Erreur échantillonnage (fallback lignes) : {e}")
+        return {"text": doc.export_to_markdown()[:max_chars], "pages_used": ["Fallback 10k chars"]}
 
 
 def build_identity_prompt(

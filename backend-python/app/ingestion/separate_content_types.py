@@ -26,12 +26,10 @@ def separate_content_types(chunk, doc: DoclingDocument):
         if hasattr(chunk.meta, 'headings') and chunk.meta.headings:
             content_data["chunk_headings"] = chunk.meta.headings or []
             content_data["chunk_heading_full"] = " > ".join(chunk.meta.headings) if chunk.meta.headings else ""
-        
     content_data["chunk_page_numbers"] = extract_page_numbers(chunk, doc)
 
     if hasattr(chunk, 'meta') and chunk.meta and hasattr(chunk.meta, 'doc_items'):
         for item in chunk.meta.doc_items:
-            
             # 3. Gestion des Tableaux
             if isinstance(item, TableItem):
                 try:
@@ -41,36 +39,39 @@ def separate_content_types(chunk, doc: DoclingDocument):
                         print(f"  📊 Tableau trouvé et extrait")
                 except Exception as e:
                     print(f"⚠️ Erreur extraction tableau: {e}")
-            
+           
             # 4. Gestion des Images
             elif isinstance(item, PictureItem):
+                print(f"  📸 [DEBUG] PictureItem détecté dans le code !")
                 try:
-                    # Méthode 1: Via l'URI dans doc.pictures
+                    pil_image = None
+                    
                     if hasattr(item, 'image') and item.image:
-                        image_uri = item.image.uri if hasattr(item.image, 'uri') else None
-                        
-                        if image_uri and hasattr(doc, 'pictures') and image_uri in doc.pictures:
-                            pil_image = doc.pictures[image_uri]
-                            
-                            buffered = io.BytesIO()
-                            pil_image.save(buffered, format="JPEG", quality=85)
-                            img_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-                            content_data['images_base64'].append(img_b64)
-                            print(f"  📸 Image trouvée via URI et convertie en base64")
-                        
-                        # Méthode 2: L'image peut être directement dans item.image (objet PIL)
-                        elif hasattr(item.image, 'pil_image'):
-                            pil_image = item.image.pil_image
-                            
-                            buffered = io.BytesIO()
-                            pil_image.save(buffered, format="JPEG", quality=85)
-                            img_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-                            content_data['images_base64'].append(img_b64)
-                            print(f"  📸 Image trouvée directement et convertie en base64")
+                        print(f"     -> Attribut 'image' présent")
+                        pil_image = item.image.pil_image if hasattr(item.image, 'pil_image') else None
+                    
+                    if not pil_image and hasattr(doc, 'pictures'):
+                        # Fallback via le dictionnaire des images du doc
+                        # Plus sûr pour v2
+                        image_ref = None
+                        if hasattr(item, 'self_ref'):
+                            image_ref = str(item.self_ref) if not hasattr(item.self_ref, 'uri') else item.self_ref.uri
+                        print(f"     -> Recherche via URI: {image_ref}")
+                        if image_ref in doc.pictures:
+                            pil_image = doc.pictures[image_ref]
+
+                    if pil_image:
+                        buffered = io.BytesIO()
+                        pil_image.save(buffered, format="JPEG", quality=85)
+                        img_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                        content_data['chunk_images_base64'].append(img_b64)
+                        print(f"  📸 Image extraite avec succès !")
+                    else:
+                        print(f"     ❌ Impossible de récupérer les pixels de l'image")
                             
                 except Exception as e:
                     print(f"⚠️ Erreur extraction image: {e}")
-    
+
     return content_data
 
 
@@ -86,33 +87,23 @@ def extract_page_numbers(chunk, doc: DoclingDocument) -> List[int]:
     """
     page_numbers = set()  # Utiliser un set pour éviter les doublons
     
-    # Méthode 1 : Via chunk.meta.doc_items (si disponible)
+    # Stratégie 1 : Utiliser directement les doc_items du chunk 
     if hasattr(chunk, 'meta') and hasattr(chunk.meta, 'doc_items'):
-        for item_ref in chunk.meta.doc_items:
-            # item_ref est une référence vers un item du document
-            item = doc.get_item(item_ref) if hasattr(doc, 'get_item') else None
-            if item and hasattr(item, 'prov'):
+        for item in chunk.meta.doc_items:
+            # Dans Docling v2, l'item dans doc_items a souvent déjà la provenance
+            if hasattr(item, 'prov') and item.prov:
                 for prov in item.prov:
                     if hasattr(prov, 'page_no'):
                         page_numbers.add(prov.page_no)
     
-    # Méthode 2 : Parcourir doc.main_text et vérifier si l'item est dans le chunk
+    # Stratégie 2 : Fallback via l'itérateur global si page_numbers est vide
     if not page_numbers:
-        for item in doc.main_text:
+        # iterate_items() est la méthode universelle en v2 pour parcourir le doc
+        for item, _level in doc.iterate_items():
             if is_item_in_chunk(item, chunk):
                 page_no = get_item_page(item)
                 if page_no:
                     page_numbers.add(page_no)
-    
-    # Méthode 3 : Fallback - analyser le texte du chunk pour trouver des patterns
-    if not page_numbers:
-        # Certains chunks peuvent avoir des infos de page dans leur texte
-        # Ex: "Page 15" ou des métadonnées cachées
-        chunk_text = chunk.text or ""
-        # Pattern pour détecter "page X" dans les métadonnées
-        page_matches = re.findall(r'page[:\s]+(\d+)', chunk_text.lower())
-        for match in page_matches:
-            page_numbers.add(int(match))
     
     # Retourner la liste triée
     return sorted(list(page_numbers))

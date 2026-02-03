@@ -3,8 +3,8 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue
 import os
 from ..embeddings.hf_solon_client_embedder import SolonEmbeddingClient
 from ..embeddings.local_embedder import LocalEmbeddingClient
-from psycopg2.extras import RealDictCursor
 from ..db.postgres import get_connection
+import asyncio
 
 env = os.getenv("ENVIRONMENT", "development")
 embedding_client = SolonEmbeddingClient() if env == "production" else LocalEmbeddingClient()
@@ -49,16 +49,14 @@ def search_top_k(standalone_query, doc_id=None, collection_name="all_documents",
         return []
 
 
-def fetch_chunks_by_ids(chunk_ids):
+async def fetch_chunks_by_ids(chunk_ids):
     """
     Fetch chunks from Postgres using chunk_id UUIDs.
     """
     if not chunk_ids:
         return []
 
-    conn = get_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
+    conn = await get_connection()
     query = """
         SELECT
             chunk_id,
@@ -71,41 +69,36 @@ def fetch_chunks_by_ids(chunk_ids):
             chunk_images_base64,
             created_at
         FROM chunks
-        WHERE chunk_id = ANY(%s::uuid[])
+        WHERE chunk_id = ANY($1::uuid[])
     """
 
-    cur.execute(query, (chunk_ids,))
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    enriched_chunks = []
-    for row in rows:
-        heading = row["chunk_heading_full"]
-        text = row["chunk_text"]
+    try:
+        # asyncpg utilise $1, $2 au lieu de %s et fetch() renvoie des records type dict
+        rows = await conn.fetch(query, chunk_ids)
         
-        if heading and heading != "Sans titre":
-            # Format Markdown avec le titre en en-tête
-            enriched_text = f"# --- {heading} ---\n\n{text}"
-        else:
-            enriched_text = text
-        
-        enriched_chunks.append({
-            "chunk_id": str(row["chunk_id"]),
-            "doc_id": str(row["doc_id"]),
-            "chunk_index": row["chunk_index"],
-            "text": enriched_text,  # ✅ Texte enrichi avec heading
-            "heading_full": heading,  # ✅ Heading séparé pour métadonnées
-            "headings": row["chunk_headings"],  # ✅ Hiérarchie complète
-            "tables": row["chunk_tables"],
-            "images_base64": row["chunk_images_base64"],
-            "created_at": row["created_at"]
-        })
-    
-    return enriched_chunks
+        enriched_chunks = []
+        for row in rows:
+            heading = row["chunk_heading_full"]
+            text = row["chunk_text"]
+            
+            enriched_text = f"# --- {heading} ---\n\n{text}" if heading and heading != "Sans titre" else text
+            
+            enriched_chunks.append({
+                "chunk_id": str(row["chunk_id"]),
+                "doc_id": str(row["doc_id"]),
+                "chunk_index": row["chunk_index"],
+                "text": enriched_text,
+                "heading_full": heading,
+                "headings": row["chunk_headings"],
+                "tables": row["chunk_tables"],
+                "images_base64": row["chunk_images_base64"],
+                "created_at": row["created_at"]
+            })
+        return enriched_chunks
+    finally:
+        await conn.close()
 
-def retrieve_chunks(query, limit=12):
+async def retrieve_chunks(query, limit=12):
     # 1. On cherche les IDs et les scores dans Qdrant
     hits = search_top_k(query, limit=limit)
     if not hits:
@@ -115,7 +108,7 @@ def retrieve_chunks(query, limit=12):
     chunk_ids = [h["chunk_id"] for h in hits]
 
     # 3. On récupère le contenu textuel (et images/tables) dans Postgres
-    chunks_from_db = fetch_chunks_by_ids(chunk_ids)
+    chunks_from_db = await fetch_chunks_by_ids(chunk_ids)
 
     # 4. On crée un dictionnaire pour retrouver un chunk par son ID rapidement
     chunks_by_id = {c["chunk_id"]: c for c in chunks_from_db}

@@ -55,6 +55,7 @@ def get_docling_converter(file_path: str):
     # Images : extraction pour GPT-4o vision
     pipeline_options.images_scale = 1.75
     pipeline_options.generate_page_images = True
+    pipeline_options.generate_picture_images = True
     
     # Tableaux : extraction et conversion en Markdown
     pipeline_options.do_table_structure = True
