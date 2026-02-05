@@ -85,16 +85,20 @@ async def fetch_chunks_by_ids(chunk_ids):
             visual_summary = row["chunk_visual_summary"] or ""
 
             display_text = f"### {heading}\n\n{text_original}" if heading and heading != "Sans titre" else text_original
-            rerank_text = ""
-            if visual_summary != "" : rerank_text += f"RÉSUMÉ VISUEL ET TABLEAU: {visual_summary}\n"
-            rerank_text = display_text
-            rerank_text += f"CONTEXTE: {heading}\n"
-            rerank_text += f"CONTENU: {text_original}"
+            
+
+            rerank_parts = []
 
             if visual_summary:
-                rerank_text += f"\n\n[ANALYSE VISUELLE/TABLEAU] :\n{visual_summary}"
-
+                rerank_parts.append(f"[CONTENU VISUEL ET TABLEAUX]: {visual_summary}")
             
+            if heading and heading != "Sans titre":
+                rerank_parts.append(f"[TITRE/CONTEXTE]: {heading}")
+            
+            rerank_parts.append(f"[TEXTE BRUT]: {text_original}")
+
+            rerank_text = "\n\n".join(rerank_parts)
+
             enriched_chunks.append({
                 "chunk_id": str(row["chunk_id"]),
                 "doc_id": str(row["doc_id"]),
@@ -117,35 +121,45 @@ async def fetch_chunks_by_ids(chunk_ids):
         await release_connection(conn)
 
 async def retrieve_chunks(query, doc_id=None, limit=30):
-    # 1. & 2. Qdrant + Fetch Postgres (comme avant)
+    # 1. Qdrant
     hits = search_top_k(query, doc_id=doc_id, limit=limit)
     if not hits: return []
+    
+    # 2. Postgres
     chunks_from_db = await fetch_chunks_by_ids([h["chunk_id"] for h in hits])
+    if not chunks_from_db: return []
     
-    # 3. Reranking technique (On garde les X meilleurs chunks)
-    reranked_chunks = rerank_results(query, chunks_from_db, top_n=8)
+    # 3. Reranking (On en garde 15 pour être large)
+    reranked_chunks = rerank_results(query, chunks_from_db, top_n=15)
     
-    # A. On récupère toutes les identités nécessaires d'un coup
-    final_doc_ids = list({c["doc_id"] for c in reranked_chunks})
-    all_identities = await fetch_identities_by_doc_ids(final_doc_ids)
+    # 4. Récupération des Identités
+    doc_ids_in_results = list({c["doc_id"] for c in reranked_chunks})
+    all_identities = await fetch_identities_by_doc_ids(doc_ids_in_results)
     
-    # B. On crée un dictionnaire : { doc_id: [Identity, Chunk1, Chunk2...] }
-    grouped_data = {doc_id: [] for doc_id in final_doc_ids}
+    # Création d'un dictionnaire pour accès rapide aux identités {doc_id: identity_chunk}
+    identity_map = {str(idnt["doc_id"]): idnt for idnt in all_identities}
     
-    # On place l'identité en premier pour chaque groupe
-    for identity in all_identities:
-        if identity["doc_id"] in grouped_data:
-            grouped_data[identity["doc_id"]].append(identity)
-            
-    # On ajoute les chunks techniques derrière leur identité respective
-    for chunk in reranked_chunks:
-        if not chunk.get("is_identity"): # Éviter les doublons si l'identité était déjà dans le top
-            grouped_data[chunk["doc_id"]].append(chunk)
-
-    # C. On aplatit le dictionnaire en une liste ordonnée
     final_context = []
-    for doc_id in final_doc_ids:
-        final_context.extend(grouped_data[doc_id])
+    seen_doc_identities = set()
+
+    for chunk in reranked_chunks:
+        curr_doc_id = str(chunk["doc_id"])
+        
+        # SI c'est le premier chunk qu'on voit pour ce document, 
+        # on insère l'identité du doc JUSTE AVANT
+        if curr_doc_id not in seen_doc_identities:
+            if curr_doc_id in identity_map:
+                # On marque l'identité pour que le front sache faire la différence
+                identity = identity_map[curr_doc_id]
+                identity["is_identity"] = True 
+                final_context.append(identity)
+            seen_doc_identities.add(curr_doc_id)
+        
+        # On ajoute le chunk technique
+        chunk["is_identity"] = False
+        final_context.append(chunk)
+
+    print(f"DEBUG: Nombre de sources envoyées au front: {len(final_context)}")
+    # Tu devrais voir ici un chiffre comme 9 (1 identité + 8 chunks) ou 16 (1 identité + 15 chunks)
     
     return final_context
-    

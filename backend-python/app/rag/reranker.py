@@ -28,7 +28,7 @@ def get_local_reranker():
         )
     return _LOCAL_MODEL_CACHE
 
-MIN_RERANK_SCORE = 0.01 #to test in rEALITY...
+MIN_RERANK_SCORE = -10 #to test in rEALITY...
 
 def rerank_results(query, retrieved_docs, top_n=15):
     """
@@ -51,9 +51,11 @@ def rerank_results(query, retrieved_docs, top_n=15):
 
     try:
         if env == "development":
+
             model = get_local_reranker()
             pairs = [[query, text] for text in documents_text]
             scores = model.predict(pairs)
+            print(f"DEBUG: Reranking {len(documents_text)} chunks avec le modèle local.")
 
             for i, doc in enumerate(retrieved_docs):
                 doc["rerank_score"] = float(scores[i])

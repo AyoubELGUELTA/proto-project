@@ -194,6 +194,7 @@ FORMAT STRICT À RESPECTER:
 
 STRUCTURE DU DOCUMENT:
 [Liste numérotée des chapitres/sections AVEC numéros de page]
+Si tu as le Sommaire, tu recopies le sommaire tel quel, avec les numéro de page et les noms de chapitres
 Exemple:
 1. Chapitre 1 (p.15-32)
 2. Chapitre 2 (p.33-46)

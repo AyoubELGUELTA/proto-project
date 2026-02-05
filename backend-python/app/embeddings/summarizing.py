@@ -17,6 +17,7 @@ async def summarise_chunks(organized_chunks, chunk_ids):
         visual_description = "" 
 
         if tables or images:
+            print(f"🧠 Appel IA pour chunk {chunk_id} ({len(images)} imgs, {len(tables)} tabs)")
             try:
                 text, visual_description = create_ai_enhanced_summary(
                     text,
@@ -26,18 +27,17 @@ async def summarise_chunks(organized_chunks, chunk_ids):
             except Exception as e:
                 print(f"⚠️ Erreur AI summary pour chunk {chunk_id}: {e}")
         
-            summarised_chunks.append({
-            "chunk_id": str(chunk_id),
-            "text": text,
-            "visual_summary": visual_description
-            })
+        summarised_chunks.append({
+        "chunk_id": str(chunk_id),
+        "text": text,
+        "visual_summary": visual_description
+        })
 
             
     
     if summarised_chunks:
         await update_chunks_with_ai_data(summarised_chunks)
-        
-    print(f'✅ Premier chunk résumé: {summarised_chunks[0]["chunk_id"]}')
-    print(f'   Texte (preview): {summarised_chunks[0]["text"][:150]}...')
+        print(f'✅ Premier chunk résumé: {summarised_chunks[0]["chunk_id"]}')
+        print(f'   Texte (preview): {summarised_chunks[0]["text"][:150]}...')
     
     return summarised_chunks

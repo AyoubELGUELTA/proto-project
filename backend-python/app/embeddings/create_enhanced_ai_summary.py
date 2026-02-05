@@ -20,8 +20,7 @@ def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) 
     try:
 
         api_key = os.getenv("OPENAI_API_KEY")
-        model_name = "gpt-5-nano-2025-08-07"
-
+        model_name = os.getenv("SUMMARIZER_MODEL_NAME", "gpt-4.1-nano-2025-04-14")
         # Initialize LLM (vision-capable for images)
         llm = ChatOpenAI(
             model=model_name,

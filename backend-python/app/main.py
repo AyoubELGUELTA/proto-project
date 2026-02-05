@@ -21,7 +21,9 @@ from .rag.answer_generator import generate_answer_with_history
 from .rag.reranker import rerank_results
 from .rag.query_rewriter import rewrite_query
 from .utils.s3_storage import storage
+from .utils.processor import process_enriched_chunks
 
+from docling_core.types.doc import PictureItem
 
 app = FastAPI(title="Dawask RAG Prototype")
 # Indispensable pour que l'UI (frontend) puisse appeler Docker (backend)
@@ -112,7 +114,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
         
         # Stocker le chunk identité
 
-        identity_chunk_id = await store_identity_chunk(
+        await store_identity_chunk(
             doc_id=doc_uuid,
             identity_text=identity_data["identity_text"],
             pages_sampled=identity_data.get("pages_sampled", [])
@@ -120,57 +122,11 @@ async def ingest_pdf(file: UploadFile = File(...)):
 
         print(f"✅ Fiche identité créée : {identity_data['token_count']} tokens")
         print(f"   Pages échantillonnées : {identity_data.get('pages_sampled', [])}")
+
         
-        enriched_chunks = []
-        for i, chunk in enumerate(chunks):
-            # Log pour voir si le chunk contient des références
-            num_items = len(chunk.meta.doc_items) if hasattr(chunk.meta, 'doc_items') else 0
-            print(f"📦 Traitement chunk {i}/{len(chunks)} | Items rattachés: {num_items}")
+        enriched_chunks = process_enriched_chunks(doc, chunks)          
             
-            # Vérifier si un PictureItem est présent dans les items du chunk
-            if num_items > 0:
-                for item in chunk.meta.doc_items:
-                    if "PictureItem" in str(type(item)):
-                        print(f"   ✨ IMAGE TROUVÉE DANS LES MÉTADONNÉES DU CHUNK {i} !")
-
-            content = separate_content_types(chunk, doc)
-
-            if 'chunk_images_urls' not in content:
-                content['chunk_images_urls'] = []
-
-            # LIAISON FORCÉE
-            if not content.get('chunk_images_base64'): # Si pas d'image détectée par Docling
-                chunk_pages = content["chunk_page_numbers"] 
-                for item, _level in doc.iterate_items():
-                    if "PictureItem" in str(type(item)):
-                        item_page = item.prov[0].page_no if item.prov else None
-                        if item_page in chunk_pages:
-                            image_obj = item.get_image(doc)
-                            if image_obj:
-                                width, height = image_obj.size
-                                if width < 150 or height < 150:
-                                    # On ignore l'image si elle est trop petite (logo, icône...)
-                                    continue
-                                # UPLOAD VERS MINIO
-                                url = storage.upload_image(image_obj)
-                                if url:
-                                    content['chunk_images_urls'].append(url)
-
-
-            # Créer un chunk enrichi
-            enriched_chunk = {
-                'chunk_index': i,
-                'text': content['chunk_text'],
-                'headings': content['chunk_headings'],
-                'heading_full': content["chunk_heading_full"] if content["chunk_heading_full"] else 'Sans titre',
-                'page_numbers': content["chunk_page_numbers"],
-                'tables': content['chunk_tables'],
-                'images_urls': content['chunk_images_urls']
-            }
-            
-            enriched_chunks.append(enriched_chunk)        
-          
-            # we store them in postgress, with the proper doc_id + keep the chunk ids in order to keep the same ids for qdrant
+        # we store them in postgress, with the proper doc_id + keep the chunk ids in order to keep the same ids for qdrant
         chunk_ids = await store_chunks_batch(enriched_chunks, doc_uuid)
         t3 = time.perf_counter()
         
@@ -185,9 +141,6 @@ async def ingest_pdf(file: UploadFile = File(...)):
         t4 = time.perf_counter()
         print("🔥 Chunks vectorized 🔥")
 
-
-
-        
         original_filename = file.filename if file.filename else "unknown_file"
 
         store_vectors_incrementally(vectorized_docs=vectorised_chunks)
