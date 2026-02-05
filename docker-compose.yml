@@ -53,7 +53,20 @@ services:
       - postgres
     restart: unless-stopped
 
+  minio:
+    container_name: minio
+    image: minio/minio
+    env_file: .env
+    ports:
+      - "9000:9000"       # API S3
+      - "9001:9001"       # Console UI
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+
 volumes:
   qdrant_data:
   pg_data:
   hf_cache:
+  minio_data:

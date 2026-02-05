@@ -19,17 +19,18 @@ def get_local_reranker():
         print(f"🚀 Loading Local Reranker into memory on: {device}...")
         
         # On peut rendre le modèle local configurable aussi
-        model_name = os.getenv("LOCAL_RERANK_MODEL", "mixedbread-ai/mxbai-rerank-xsmall-v1")
+        model_name = os.getenv("LOCAL_RERANK_MODEL", "BAAI/bge-reranker-v2-m3")
         
         _LOCAL_MODEL_CACHE = CrossEncoder(
             model_name, 
-            device=device
+            device=device,
+            max_length=1024
         )
     return _LOCAL_MODEL_CACHE
 
 MIN_RERANK_SCORE = 0.01 #to test in rEALITY...
 
-def rerank_results(query, retrieved_docs, top_n=8):
+def rerank_results(query, retrieved_docs, top_n=15):
     """
     Re-rank the search results based on the current ENVIRONMENT.
     """
@@ -37,7 +38,11 @@ def rerank_results(query, retrieved_docs, top_n=8):
     if not retrieved_docs:
         return []
     print(retrieved_docs)
-    documents_text = [doc["text"] for doc in retrieved_docs]
+
+    documents_text = [
+        doc.get("text_for_reranker", doc.get("text", "")) #fallback in case... 
+        for doc in retrieved_docs
+    ]
 
     final_results = []
     env = os.getenv("ENVIRONMENT", "development")

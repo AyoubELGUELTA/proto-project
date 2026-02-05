@@ -1,12 +1,12 @@
 import os
-
+from typing import Tuple
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
 from typing import List, Dict, Any, cast
 from .normalize_llm_response import normalize_llm_content  # to stringify the llm response
 
-def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) -> str:
+def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) -> Tuple[str, str]:
     """
     Merge multimodal content into a compact, embeddable text.
     - If only text is present -> return text unchanged
@@ -14,49 +14,56 @@ def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) 
     """
 
     # BYPASS LLM if no multimodal content, economy on credits
-    if not images:
+    if not images and not tables:
         return text
 
     try:
 
         api_key = os.getenv("OPENAI_API_KEY")
-        model_name = os.getenv("SUMMARIZER_MODEL_NAME", "gpt-5-nano-2025-08-07")
+        model_name = "gpt-5-nano-2025-08-07"
 
         # Initialize LLM (vision-capable for images)
         llm = ChatOpenAI(
             model=model_name,
             api_key = api_key,
-            # temperature=0
+            temperature=1
         )
 
         # STRICT, NON-EXPANSIVE PROMPT
 
-        prompt_text = f"""
-        Tu es un expert en indexation sémantique.
+        prompt_text  = f"""
+        Tu es un extracteur de données factuelles pour indexation sémantique (RAG).
         
-        RÈGLES STRICTES :
+        TON OBJECTIF : 
+        Extraire les informations complémentaires issues des TABLEAUX et/ou des IMAGES qui ne sont pas explicitement détaillées dans le texte.
+
+        RÈGLES D'OR (STRICTES) :
+        1. LOGOS/DÉCO : Si une image est un logo, une icône, une signature ou un élément purement décoratif -> RENVOIE "RAS".
+        2. PAS DE BLA-BLA : Ne commence jamais par "L'image montre", "Voici un résumé" ou "Le tableau indique". 
+        3. FORMAT DE RÉPONSE : 
+        - Produis une liste de faits bruts. Chaque ligne doit être une information autonome.
+        - Transforme chaque ligne de tableau en une phrase sujet-verbe-complément.
+        - Supprime la structure Markdown (| --- |).
+        - NE RECOPIE PAS LE TABLEAU. Décris-le.
+        4. TEXTE ORIGINAL : Ne répète jamais ce qui est déjà écrit dans le TEXTE DE RÉFÉRENCE ci-dessous.
+        5. SILENCE : Si les visuels n'apportent aucune donnée factuelle supplémentaire -> RENVOIE UNIQUEMENT "RAS".
+
+        STRUCTURE DE SORTIE ATTENDUE :
+        - Fait visuel/tabulaire 1
+        - Fait visuel/tabulaire 2
         
-        - ANALYSE les TABLEAUX en Markdown présents dans le texte : convertis leurs données importantes en phrases descriptives factuelles (ex: "Le tableau indique que la ville de Médine compte X puits...").
-        - ANALYSE les IMAGES fournies et intègre UNIQUEMENT leurs infos factuelles manquantes au texte.
-        - Génère UNIQUEMENT une description textuelle factuelle des informations qu'ils apportent. 
-        - Si les images n'apportent rien de plus, ne renvoie rien.
-        - Ne répète pas le texte original, UNIQUEMENT les infos des tableaux et des images.
-        - Si aucune image/tableau n'est utile, RENVOIE "RAS".
-        
-        
-        TEXTE DE RÉFÉRENCE (pouvant contenir des tableaux) :
+        TEXTE DE RÉFÉRENCE :
         {text}
         """
+        full_prompt = prompt_text
 
-        # # Add tables if present
-        # if tables:
-        #     prompt_text += "\nTABLES:\n"
-        #     for i, table in enumerate(tables):
-        #         prompt_text += f"Table {i + 1}:\n{table}\n" OBSOLETE, TABLES ARE IN THE TEXT ATTRIBUTE ASWELL
-
+        if tables and len(tables) > 0:
+            full_prompt += "\n\n--- TABLEAUX À ANALYSER ---\n"
+            for i, table_md in enumerate(tables):
+                full_prompt += f"Tableau {i+1}:\n{table_md}\n"
         # Build message content
         message_content: List[Dict[str, Any]] = [
-            {"type": "text", "text": prompt_text}
+            {"type": "text", "text": full_prompt}
         ]
 
         # Add images if present
@@ -75,12 +82,24 @@ def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) 
             content=message_content
         ) 
         response = llm.invoke([message])
-        if "RAS" not in response.content.upper():
-            enhanced_content = text + "\n\n[INFO COMPLÉMENTAIRE] : " + response.content
+        ai_response = response.content.strip()
+        if "RAS" not in ai_response.upper():
+            print(f"🔍 AI ENRICHMENT LOG : {ai_response}")
+            
+            # Nettoyage robuste du Markdown pour BGE
+            import re
+            # 1. Supprime les lignes de séparateurs de tableaux (|---|---|)
+            clean_text = re.sub(r'^\s*\|[\s\-\|]+\|\s*$', '', text, flags=re.MULTILINE)
+            # 2. Supprime les lignes de contenu (| val |) même si elles sont mal formées
+            clean_text = re.sub(r'^\s*\|.*\|\s*$', '', clean_text, flags=re.MULTILINE)
+            # 3. Supprime les sauts de ligne multiples créés par le nettoyage
+            clean_text = re.sub(r'\n\s*\n', '\n\n', clean_text).strip()
+            
+            
+            return clean_text, normalize_llm_content(ai_response)
         else:
-            enhanced_content = text
+            return text, ""
 
-        return normalize_llm_content(enhanced_content)
 
     except Exception as e:
         print(f"⚠️ Erreur LLM Vision: {e}")

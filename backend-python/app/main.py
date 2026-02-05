@@ -147,6 +147,10 @@ async def ingest_pdf(file: UploadFile = File(...)):
                         if item_page in chunk_pages:
                             image_obj = item.get_image(doc)
                             if image_obj:
+                                width, height = image_obj.size
+                                if width < 150 or height < 150:
+                                    # On ignore l'image si elle est trop petite (logo, icône...)
+                                    continue
                                 # UPLOAD VERS MINIO
                                 url = storage.upload_image(image_obj)
                                 if url:
@@ -173,7 +177,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
         print("🔥 Chunks stored 🔥")
 
         # we summarise them to prepare the embedding
-        summarised_chunks = summarise_chunks(enriched_chunks, chunk_ids)
+        summarised_chunks = await summarise_chunks(enriched_chunks, chunk_ids)
         print("🔥 Chunks smmarized 🔥")
         
         vectorised_chunks = vectorize_documents(summarised_chunks)
@@ -224,47 +228,39 @@ async def ingest_pdf(file: UploadFile = File(...)):
 chat_history = []
 
 @app.get("/query")
-async def query_rag(question: str, limit: int = 40):
-    """
-    Endpoint to process RAG queries with a Retrieve-then-Rerank pipeline.    
-    """
+async def query_rag(question: str, limit: int = 30):
     global chat_history
 
     try:
-        # 1. Rewrite the question BEFORE retrieval
+        # 1. Rewrite : On transforme la question "élève" en question "autonome"
         standalone_query = rewrite_query(question, chat_history)
 
-        # 2. Retrieve
-        print ("Debug 1")
-         
-        initial_chunks = retrieve_chunks(standalone_query, limit)
-        print ("Debug 2")
+        # 2. Retrieve + Rerank + Group (Tout est packagé dans retrieve_chunks maintenant)
+        # On récupère directement la liste finale : [Identité, Chunk1, Chunk2, Identité2, ...]
+        print("🚀 Step: Retrieving, Reranking and Grouping...")
+        final_context = await retrieve_chunks(standalone_query, limit=limit)
 
-        if not initial_chunks:
-            return {"answer": "Je n'ai pas trouvé de documents pertinents pour répondre a ta demande. :/", "sources": []}
+        if not final_context:
+            return {
+                "answer": "Je n'ai pas trouvé d'informations dans mes cours pour répondre à cette question.", 
+                "sources": []
+            }
 
-        # 3. Rerank the results
-        # This will re-order the 35 chunks and return the top 'limit' (default 20)
-        # Based on deep semantic understanding
-        refined_chunks = rerank_results(standalone_query, initial_chunks, top_n=20)
-        print ("Debug 3")
+        # 3. Generation : On passe le contexte groupé au Professeur
+        print("🧠 Step: Generating Answer...")
+        answer = generate_answer_with_history(question, final_context, chat_history)
 
-        # 4. Generate Answer using the refined context
-        # The LLM now receives only the most pertinent information
-        answer = generate_answer_with_history(question, refined_chunks, chat_history)
-        print ("Debug 4")
-
-        chat_history.append({"role": "user", "content": question})
-        chat_history.append({"role": "assistant", "content": answer})
-
+        # 4. Retour au Frontend
+        # 'final_context' contient déjà 'visual_summary', 'text', 'images_urls', etc.
         return {
             "answer": answer,
             "standalone_query": standalone_query,
-            "sources": [c for c in refined_chunks]
+            "sources": final_context 
         }
+
     except Exception as e:
-        print(f"❌ Erreur Query: {e}")
-        raise HTTPException(status_code=500, detail=str(e))    
+        print(f"❌ Erreur critique dans l'endpoint Query: {e}")
+        raise HTTPException(status_code=500, detail=str(e))   
     
     
 @app.post("/clear-history") #to clear history context of the user, every day, every new chat, ...

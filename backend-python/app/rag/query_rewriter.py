@@ -4,47 +4,44 @@ from .answer_generator import call_gpt_4o_mini
 
 
 def rewrite_query(latest_question, chat_history):
-    """"Rewrite the latest_question of the user by taking into account the chat_history 
-    to make a standalone question for the retriever"""
-    
     if not chat_history:
+        # On ajoute quand même le petit suffixe "selon les documents" défini dans ton système
         return latest_question
     
-    print (chat_history)
-    
     try:
-        # On limite l'historique (configurable via env pour économiser des tokens)
-        history_limit = int(os.getenv("CHAT_HISTORY_LIMIT", 6))
+        history_limit = int(os.getenv("CHAT_HISTORY_LIMIT", 10))
         
+        # 1. On construit l'historique COMPLET (User + Assistant)
         history_str = ""
         for msg in chat_history[-history_limit:]:
-            role = msg.get('role', 'user')
+            role = "Élève" if msg.get('role') == 'user' else "Professeur"
             content = msg.get('content', '')
             history_str += f"{role}: {content}\n"
     
-
-            prompt = f"""
-        ROLE : PRENDS EN COMPTE LES INSTRUCTIONS SYSTEMES QUE TU AS REÇUES.
-
-        Historique de la conversation:
+        prompt = f"""
+        HISTORIQUE DE LA DISCUSSION :
         {history_str}
 
-        Dernière question:
+        DERNIÈRE QUESTION DE L'ÉLÈVE :
         {latest_question}
+
+        CONSIGNE : 
+        En utilisant l'historique, reformule la dernière question pour qu'elle soit compréhensible sans contexte. 
+        Respecte strictement les instructions système (langue française, ajout de "selon les documents").
+
         """
 
         content_list = [{"type": "text", "text": prompt}]
 
-        rewritten_query = call_gpt_4o_mini(content_list, summarizing= True)
+        # On appelle le LLM une seule fois, après avoir construit history_str
+        rewritten_query = call_gpt_4o_mini(content_list, summarizing=True)
 
-        # Sécurité : Si le LLM renvoie n'importe quoi ou vide
         if not rewritten_query or len(rewritten_query.strip()) < 2:
             return latest_question
             
+        print ("REFORMULATION DE LA QUERY :", rewritten_query.strip())
         return rewritten_query.strip()
     
     except Exception as e:
-        print(f"⚠️ Échec du Query Rewriting: {e}. Utilisation de la question originale.")
-        # Fallback critique : si l'IA de réécriture plante, 
-        # on utilise la question brute pour ne pas bloquer le RAG
+        print(f"⚠️ Échec du Query Rewriting: {e}")
         return latest_question

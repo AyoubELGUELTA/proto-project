@@ -1,9 +1,10 @@
 from qdrant_client import QdrantClient, models
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 import os
+from .reranker import rerank_results
 from ..embeddings.hf_solon_client_embedder import SolonEmbeddingClient
 from ..embeddings.local_embedder import LocalEmbeddingClient
-from ..db.postgres import get_connection
+from ..db.postgres import get_connection, release_connection, fetch_identities_by_doc_ids 
 import asyncio
 
 env = os.getenv("ENVIRONMENT", "development")
@@ -63,10 +64,11 @@ async def fetch_chunks_by_ids(chunk_ids):
             doc_id,
             chunk_index,
             chunk_text,
+            chunk_visual_summary,
             chunk_heading_full,
             chunk_headings,
             chunk_tables,
-            chunk_images_base64,
+            chunk_images_urls,
             created_at
         FROM chunks
         WHERE chunk_id = ANY($1::uuid[])
@@ -79,47 +81,71 @@ async def fetch_chunks_by_ids(chunk_ids):
         enriched_chunks = []
         for row in rows:
             heading = row["chunk_heading_full"]
-            text = row["chunk_text"]
-            
-            enriched_text = f"# --- {heading} ---\n\n{text}" if heading and heading != "Sans titre" else text
+            text_original = row["chunk_text"]
+            visual_summary = row["chunk_visual_summary"] or ""
+
+            display_text = f"### {heading}\n\n{text_original}" if heading and heading != "Sans titre" else text_original
+            rerank_text = ""
+            if visual_summary != "" : rerank_text += f"RÉSUMÉ VISUEL ET TABLEAU: {visual_summary}\n"
+            rerank_text = display_text
+            rerank_text += f"CONTEXTE: {heading}\n"
+            rerank_text += f"CONTENU: {text_original}"
+
+            if visual_summary:
+                rerank_text += f"\n\n[ANALYSE VISUELLE/TABLEAU] :\n{visual_summary}"
+
             
             enriched_chunks.append({
                 "chunk_id": str(row["chunk_id"]),
                 "doc_id": str(row["doc_id"]),
                 "chunk_index": row["chunk_index"],
-                "text": enriched_text,
+                "text": display_text,
+                "text_for_reranker": rerank_text,
+                "visual_summary": visual_summary,
                 "heading_full": heading,
                 "headings": row["chunk_headings"],
                 "tables": row["chunk_tables"],
-                "images_base64": row["chunk_images_base64"],
+                "images_urls": row["chunk_images_urls"], # URLs S3
                 "created_at": row["created_at"]
             })
         return enriched_chunks
-    finally:
-        await conn.close()
-
-async def retrieve_chunks(query, limit=12):
-    # 1. On cherche les IDs et les scores dans Qdrant
-    hits = search_top_k(query, limit=limit)
-    if not hits:
-        return []
     
-    # 2. On extrait les IDs
-    chunk_ids = [h["chunk_id"] for h in hits]
+    except Exception as e: 
+        print(f"Error while fetching chunks in the retrieving: {e}")
+        return 
+    finally:
+        await release_connection(conn)
 
-    # 3. On récupère le contenu textuel (et images/tables) dans Postgres
-    chunks_from_db = await fetch_chunks_by_ids(chunk_ids)
+async def retrieve_chunks(query, doc_id=None, limit=30):
+    # 1. & 2. Qdrant + Fetch Postgres (comme avant)
+    hits = search_top_k(query, doc_id=doc_id, limit=limit)
+    if not hits: return []
+    chunks_from_db = await fetch_chunks_by_ids([h["chunk_id"] for h in hits])
+    
+    # 3. Reranking technique (On garde les X meilleurs chunks)
+    reranked_chunks = rerank_results(query, chunks_from_db, top_n=8)
+    
+    # A. On récupère toutes les identités nécessaires d'un coup
+    final_doc_ids = list({c["doc_id"] for c in reranked_chunks})
+    all_identities = await fetch_identities_by_doc_ids(final_doc_ids)
+    
+    # B. On crée un dictionnaire : { doc_id: [Identity, Chunk1, Chunk2...] }
+    grouped_data = {doc_id: [] for doc_id in final_doc_ids}
+    
+    # On place l'identité en premier pour chaque groupe
+    for identity in all_identities:
+        if identity["doc_id"] in grouped_data:
+            grouped_data[identity["doc_id"]].append(identity)
+            
+    # On ajoute les chunks techniques derrière leur identité respective
+    for chunk in reranked_chunks:
+        if not chunk.get("is_identity"): # Éviter les doublons si l'identité était déjà dans le top
+            grouped_data[chunk["doc_id"]].append(chunk)
 
-    # 4. On crée un dictionnaire pour retrouver un chunk par son ID rapidement
-    chunks_by_id = {c["chunk_id"]: c for c in chunks_from_db}
-
-    # 5. On reconstruit la liste en suivant l'ordre de Qdrant (hits)
-    ordered_chunks = []
-    for h in hits:
-        chunk_data = chunks_by_id.get(h["chunk_id"])
-        if chunk_data:
-            # On injecte le score de Qdrant dans l'objet chunk
-            chunk_data["vector_score"] = h["score"]
-            # ICI : le texte est déjà dans chunk_data["text"] grâce à fetch_chunks_by_ids
-            ordered_chunks.append(chunk_data)
-    return ordered_chunks
+    # C. On aplatit le dictionnaire en une liste ordonnée
+    final_context = []
+    for doc_id in final_doc_ids:
+        final_context.extend(grouped_data[doc_id])
+    
+    return final_context
+    
