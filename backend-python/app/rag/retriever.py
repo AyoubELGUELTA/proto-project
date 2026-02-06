@@ -1,165 +1,139 @@
-from qdrant_client import QdrantClient, models
+from qdrant_client import AsyncQdrantClient, models
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 import os
 from .reranker import rerank_results
 from ..embeddings.hf_solon_client_embedder import SolonEmbeddingClient
 from ..embeddings.local_embedder import LocalEmbeddingClient
 from ..db.postgres import get_connection, release_connection, fetch_identities_by_doc_ids 
+from ..vector_store.qdrant_service import keyword_search
+from collections import defaultdict
 import asyncio
 
 env = os.getenv("ENVIRONMENT", "development")
 embedding_client = SolonEmbeddingClient() if env == "production" else LocalEmbeddingClient()
 
+# Client Qdrant unique et persistant
+qdrant_host = os.getenv("QDRANT_HOST", "localhost")
+qdrant_port = os.getenv("QDRANT_PORT", "6333")
+client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
 
-def search_top_k(standalone_query, doc_id=None, collection_name="all_documents", limit=12):
-
-    qdrant_host = os.getenv("QDRANT_HOST", "localhost")
-    qdrant_port = os.getenv("QDRANT_PORT", "6333")
-    qdrant_url = f"http://{qdrant_host}:{qdrant_port}"
-
-    client = QdrantClient(url=qdrant_url)   
-
+async def search_vector_only(query_vector, doc_id=None, collection_name="all_documents", limit=12):
+    """Effectue la recherche vectorielle pure (le vecteur est déjà calculé)"""
     try:
-        query_vector = embedding_client.embed_query(standalone_query)
-
-        search_result = client.search(
+        search_result = await client.search(
             collection_name=collection_name,
             query_vector=query_vector,
             limit=limit,
             score_threshold=0.05,
             query_filter=Filter(
-            must=[
-                FieldCondition(
-                    key="doc_id",
-                    match=MatchValue(value=doc_id)
-                )
-            ]
-        ) if doc_id else None #In the future, if the user wants to select the courses he wants to ask question about
+                must=[FieldCondition(key="doc_id", match=MatchValue(value=doc_id))]
+            ) if doc_id else None
         )
-
-        return [
-            {
-                "chunk_id": hit.id,
-                "score": hit.score
-            }
-            for hit in search_result
-        ]
-
+        return [{"chunk_id": str(hit.id), "score": hit.score} for hit in search_result]
     except Exception as e:
-        print(f"❌ Qdrant search error: {repr(e)}")
+        print(f"❌ Qdrant vector search error: {repr(e)}")
         return []
-
 
 async def fetch_chunks_by_ids(chunk_ids):
-    """
-    Fetch chunks from Postgres using chunk_id UUIDs.
-    """
-    if not chunk_ids:
-        return []
-
+    if not chunk_ids: return []
     conn = await get_connection()
     query = """
-        SELECT
-            chunk_id,
-            doc_id,
-            chunk_index,
-            chunk_text,
-            chunk_visual_summary,
-            chunk_heading_full,
-            chunk_headings,
-            chunk_tables,
-            chunk_images_urls,
-            created_at
-        FROM chunks
-        WHERE chunk_id = ANY($1::uuid[])
+        SELECT chunk_id, doc_id, chunk_index, chunk_text, chunk_visual_summary,
+               chunk_heading_full, chunk_headings, chunk_tables, chunk_images_urls, created_at
+        FROM chunks WHERE chunk_id = ANY($1::uuid[])
     """
-
     try:
-        # asyncpg utilise $1, $2 au lieu de %s et fetch() renvoie des records type dict
         rows = await conn.fetch(query, chunk_ids)
-        
         enriched_chunks = []
         for row in rows:
             heading = row["chunk_heading_full"]
             text_original = row["chunk_text"]
             visual_summary = row["chunk_visual_summary"] or ""
-
             display_text = f"### {heading}\n\n{text_original}" if heading and heading != "Sans titre" else text_original
             
-
+            # Formatage pour le reranker
             rerank_parts = []
-
-            if visual_summary:
-                rerank_parts.append(f"[CONTENU VISUEL ET TABLEAUX]: {visual_summary}")
-            
-            if heading and heading != "Sans titre":
-                rerank_parts.append(f"[TITRE/CONTEXTE]: {heading}")
-            
+            if visual_summary: rerank_parts.append(f"[CONTENU VISUEL ET TABLEAUX]: {visual_summary}")
+            if heading and heading != "Sans titre": rerank_parts.append(f"[TITRE/CONTEXTE]: {heading}")
             rerank_parts.append(f"[TEXTE BRUT]: {text_original}")
-
-            rerank_text = "\n\n".join(rerank_parts)
 
             enriched_chunks.append({
                 "chunk_id": str(row["chunk_id"]),
                 "doc_id": str(row["doc_id"]),
                 "chunk_index": row["chunk_index"],
                 "text": display_text,
-                "text_for_reranker": rerank_text,
+                "text_for_reranker": "\n\n".join(rerank_parts),
                 "visual_summary": visual_summary,
                 "heading_full": heading,
-                "headings": row["chunk_headings"],
                 "tables": row["chunk_tables"],
-                "images_urls": row["chunk_images_urls"], # URLs S3
+                "images_urls": row["chunk_images_urls"],
                 "created_at": row["created_at"]
             })
         return enriched_chunks
-    
-    except Exception as e: 
-        print(f"Error while fetching chunks in the retrieving: {e}")
-        return 
     finally:
         await release_connection(conn)
 
-async def retrieve_chunks(query, doc_id=None, limit=30):
-    # 1. Qdrant
-    hits = search_top_k(query, doc_id=doc_id, limit=limit)
-    if not hits: return []
+async def retrieve_chunks(query, doc_id=None, limit=20):
+    """
+    Orchestre la recherche Hybride Turbo :
+    1. Lancement simultané de l'Embedding (CPU) et des Mots-clés (Qdrant).
+    2. Dès que l'embedding est prêt, lancement de la recherche vectorielle.
+    """
     
-    # 2. Postgres
-    chunks_from_db = await fetch_chunks_by_ids([h["chunk_id"] for h in hits])
+    # --- PHASE 1 : PARALLÉLISME DÉPART ---
+    # On lance l'embedding et les mots-clés en même temps
+    embedding_task = asyncio.create_task(embedding_client.embed_query(query))
+    keyword_task = asyncio.create_task(keyword_search(query, limit=limit))
+
+    # On attend les deux résultats
+    # Le temps total ici = max(temps_embedding, temps_mots_clés)
+    query_vector, keyword_hits = await asyncio.gather(embedding_task, keyword_task)
+
+    # --- PHASE 2 : RECHERCHE VECTORIELLE ---
+    # On a le vecteur, on peut chercher dans Qdrant
+    vector_hits = await search_vector_only(query_vector, doc_id=doc_id, limit=limit)
+
+    # Fusion des IDs uniques
+    combined_ids = set()
+    for hit in vector_hits: combined_ids.add(hit["chunk_id"])
+    for hit in keyword_hits: combined_ids.add(str(hit.id))
+
+    if not combined_ids: return []
+
+    print(f"🔎 Hybrid Search: {len(vector_hits)} vecteurs, {len(keyword_hits)} mots-clés. Unique: {len(combined_ids)}")
+
+    # --- PHASE 3 : POSTGRES & RERANKER ---
+    # Récupération des contenus complets
+    chunks_from_db = await fetch_chunks_by_ids(list(combined_ids))
     if not chunks_from_db: return []
     
-    # 3. Reranking (On en garde 15 pour être large)
+    # Reranking (Top 15 final)
     reranked_chunks = rerank_results(query, chunks_from_db, top_n=15)
     
-    # 4. Récupération des Identités
+    # Identités des documents
     doc_ids_in_results = list({c["doc_id"] for c in reranked_chunks})
     all_identities = await fetch_identities_by_doc_ids(doc_ids_in_results)
-    
-    # Création d'un dictionnaire pour accès rapide aux identités {doc_id: identity_chunk}
     identity_map = {str(idnt["doc_id"]): idnt for idnt in all_identities}
-    
-    final_context = []
-    seen_doc_identities = set()
 
+    # Groupement par document pour le LLM
+    grouped_by_doc = defaultdict(list)
     for chunk in reranked_chunks:
-        curr_doc_id = str(chunk["doc_id"])
-        
-        # SI c'est le premier chunk qu'on voit pour ce document, 
-        # on insère l'identité du doc JUSTE AVANT
-        if curr_doc_id not in seen_doc_identities:
-            if curr_doc_id in identity_map:
-                # On marque l'identité pour que le front sache faire la différence
-                identity = identity_map[curr_doc_id]
-                identity["is_identity"] = True 
-                final_context.append(identity)
-            seen_doc_identities.add(curr_doc_id)
-        
-        # On ajoute le chunk technique
-        chunk["is_identity"] = False
-        final_context.append(chunk)
+        grouped_by_doc[str(chunk["doc_id"])].append(chunk)
 
-    print(f"DEBUG: Nombre de sources envoyées au front: {len(final_context)}")
-    # Tu devrais voir ici un chiffre comme 9 (1 identité + 8 chunks) ou 16 (1 identité + 15 chunks)
-    
+    final_context = []
+    seen_docs = []
+    for chunk in reranked_chunks:
+        d_id = str(chunk["doc_id"])
+        if d_id not in seen_docs:
+            seen_docs.append(d_id)
+
+    for d_id in seen_docs:
+        if d_id in identity_map:
+            identity = identity_map[d_id]
+            identity["is_identity"] = True
+            final_context.append(identity)
+        for c in grouped_by_doc[d_id]:
+            c["is_identity"] = False
+            final_context.append(c)
+
     return final_context

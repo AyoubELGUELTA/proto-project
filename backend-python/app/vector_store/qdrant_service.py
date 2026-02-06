@@ -1,64 +1,105 @@
-from qdrant_client import QdrantClient
-from qdrant_client.http.models import VectorParams,  Distance, PointStruct
+from qdrant_client import AsyncQdrantClient 
+from qdrant_client.http import models
+from qdrant_client.models import PointStruct, VectorParams, Distance
 import os
-import uuid
+
+# Client partagé pour réutiliser les connexions (meilleur pour les perfs)
+_client = None
 
 def get_qdrant_client():
-    """
-    Initializes the Qdrant client using environment variables    
-    """
+    global _client
+    if _client is None:
+        host = os.getenv("QDRANT_HOST", "localhost")
+        port = os.getenv("QDRANT_PORT", "6333")
+        _client = AsyncQdrantClient(url=f"http://{host}:{port}", timeout=60)
+    return _client
 
-    host = os.getenv("QDRANT_HOST", "localhost")
-    port = os.getenv("QDRANT_PORT", "6333")
-    url = f"http://{host}:{port}"
-    
-    # api_key = os.getenv("QDRANT_API_KEY")
+async def setup_full_text_search(collection_name):
+    client = get_qdrant_client()
+    await client.create_payload_index(
+    collection_name=collection_name,
+    field_name="page_content",
+    field_schema=models.TextIndexParams(
+        type="text",
+        tokenizer=models.TokenizerType.MULTILINGUAL,
+        lowercase=True,
+        ascii_folding=True, # Très important pour les recherches en français/arabe
+        # On regroupe les paramètres techniques dans index_params
+        index_params=models.TextIndexConfig(
+            on_disk=True,
+            distance=1 # Fuzzy Match
+        )
+    )
+)
 
-    # if api_key != "":
-    #     return QdrantClient(url=url, api_key=api_key, timeout=60)
-    # else:
-    return QdrantClient(url=url, timeout=60)
 
-def store_vectors_incrementally(vectorized_docs, collection_name="all_documents"):    
+async def store_vectors_incrementally(vectorized_docs, collection_name="all_documents"):    
     """
-    Store vectorized documents in a local Qdrant collection, creating it if it doesn't exist.
-    
-    Parameters:
-        vectorized_docs (list[dict]): Each dict should have 'vector', 'content', 'metadata'
-        collection_name (str): Name of the Qdrant collection
+    Store vectorized documents in Qdrant (Async version).
     """
     if not vectorized_docs:
-        print("No documents to store.")
+        print("⚠️ No documents to store.")
         return
     
-    qdrant_client = get_qdrant_client()
+    client = get_qdrant_client()
 
-    # 1. Create collection ONCE if it doesn't exist
+    # 1. Vérification et création de la collection (Async)
     try:
-        exists = qdrant_client.collection_exists(collection_name)
-        print("DEBUG collection_exists:", exists)
+        exists = await client.collection_exists(collection_name)
     except Exception as e:
-        print("❌ ERROR while checking collection:", e)
+        print(f"❌ ERROR while checking collection: {e}")
         raise
 
     if not exists:
-        print("DEBUG 2 - creating collection")
+        print(f"📡 Creating collection: {collection_name}...")
+        # On récupère la taille du premier embedding pour configurer la collection
         vector_size = len(vectorized_docs[0]["embedding"])
-        qdrant_client.create_collection(
-            collection_name=str(collection_name),
+        
+        await client.create_collection(
+            collection_name=collection_name,
             vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
         )
+        
+        # ✅ On configure l'index plein-texte immédiatement après création
+        await setup_full_text_search(collection_name)
 
-    print("DEBUG 3")
-    # 2. Upload points (they all go to the same collection)
+    # 2. Préparation des points
     points = [
         PointStruct(
-            id=doc["chunk_id"], # Use unique IDs for every chunk
-            vector=doc["embedding"]
-            # WE ACCESS THE PAYLOAD FROM POSTGRES, WE ONLY STORE VECTORES + CHUNK IDS IN QDRANT
+            id=doc["chunk_id"], 
+            vector=doc["embedding"],
+            payload={ 
+                "page_content": doc["chunk_full_content"], # Contenu pour le MatchText
+                "chunk_id": doc["chunk_id"],
+                "doc_id": doc["metadata"].get("doc_id") # Important pour tes filtres par doc !
+            }
         ) for doc in vectorized_docs
     ]
-    print("DEBUG 4")
-    qdrant_client.upsert(collection_name=collection_name, points=points)
 
+    # 3. Upload (Upsert) Asynchrone
+    try:
+        await client.upsert(
+            collection_name=collection_name,
+            points=points,
+            wait=True # On attend que l'indexation soit finie pour confirmer
+        )
+        print(f"✅ Successfully stored {len(points)} points in {collection_name}")
+    except Exception as e:
+        print(f"❌ ERROR during upsert: {e}")
+
+
+async def keyword_search(query_text, collection_name="all_documents", limit=15):
+    client = get_qdrant_client()
+    # On nettoie un peu la query pour le plein texte
+    keywords = " ".join([w for w in query_text.split() if len(w) > 2])
+    
+    results = await client.query_points( 
+        collection_name=collection_name,
+        query=None,
+        query_filter=models.Filter(
+            must=[models.FieldCondition(key="page_content", match=models.MatchText(text=keywords))]
+        ),
+        limit=limit
+    )
+    return results.points
 

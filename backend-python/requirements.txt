@@ -25,8 +25,7 @@ langchain-docling>=0.1.0
 # --- Bases de données ---
 asyncpg>=0.29.0
 sqlalchemy==2.0.30
-qdrant-client==1.11.0   
-
+qdrant-client>=1.16.0
 # --- IA & Embeddings ---
 # PyTorch CPU-only (compatible Docling)
 --extra-index-url https://download.pytorch.org/whl/cpu

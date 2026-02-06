@@ -37,7 +37,6 @@ def rerank_results(query, retrieved_docs, top_n=15):
 
     if not retrieved_docs:
         return []
-    print(retrieved_docs)
 
     documents_text = [
         doc.get("text_for_reranker", doc.get("text", "")) #fallback in case... 

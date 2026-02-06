@@ -1,5 +1,5 @@
 import os
-import requests
+import httpx  # 👈 Remplace requests par httpx
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -68,7 +68,7 @@ CONSIGNE DE SÉCURITÉ ABSOLUE :
 
 POSTURE ET TON :
 - Parle avec l'autorité d'un expert, mais reste humble face aux limites de tes ressources.
-- Ne fais aucune référence au fait que tu lis des documents (pas de "Le texte dit", "Source 1", etc.). Réponds comme si le savoir était inné.
+- Ne fais AUCUNE REFERENCE au fait que tu lis des documents (pas de "Le texte dit", "Source 1", etc.). Réponds comme si le savoir t'étais inné.
 - Interdiction de citer des noms ou des faits qui ne sont pas écrits noir sur blanc dans les données reçues.
 
 RÈGLES DE RÉPONSE :
@@ -98,7 +98,7 @@ Règles :
   alors tu RENVOIE EXACTEMENT la meme question que tu as reçue initalement.
 """
 
-def call_gpt_4o_mini(content_list, summarizing = False, max_tokens = 3000):
+async def call_gpt_4o_mini(content_list, summarizing = False, max_tokens = 3000):
     """Function: call to openai's llm gpt-4o-mini, or gpt 4.1 nano, with the content_list parameter as a payload
     the summarizing parameter is set True if we want the model to summarize images or tables during the ingestion pipline"""
 
@@ -130,16 +130,17 @@ def call_gpt_4o_mini(content_list, summarizing = False, max_tokens = 3000):
     }   
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=90)
-        response.raise_for_status()
-        res_json = response.json()
-        return res_json["choices"][0]["message"]["content"]
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json=payload, timeout=90.0)
+            response.raise_for_status()
+            res_json = response.json()
+            return res_json["choices"][0]["message"]["content"]
     except Exception as e:
         print(f"❌ Erreur API OpenAI : {e}")
         return "Désolé, je rencontre une difficulté technique pour générer la réponse."
 
 
-def generate_answer_with_history(question, context_chunks, chat_history=None):
+async def generate_answer_with_history(question, context_chunks, chat_history=None):
     """Function : create an answer to the user {question}, by receiving {context_chunks} from the retriever/reranker."""
     if chat_history is None:
         chat_history = []
@@ -205,7 +206,7 @@ def generate_answer_with_history(question, context_chunks, chat_history=None):
             })
         
         # 5. Appel à l'IA
-        answer = call_gpt_4o_mini(content_list)
+        answer = await call_gpt_4o_mini(content_list)
 
         # 6. Mise à jour de l'historique
         chat_history.append({"role": "user", "content": question})

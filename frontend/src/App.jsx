@@ -3,7 +3,7 @@ import { ragApi } from './api/ragClient';
 import { Send, Upload, Trash2, Loader2, User, Bot } from 'lucide-react';
 
 const SourceAccordion = ({ sources }) => {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const [expandedSource, setExpandedSource] = useState(null);
   
   return (
@@ -12,31 +12,72 @@ const SourceAccordion = ({ sources }) => {
         onClick={() => setIsOpen(!isOpen)}
         className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-blue-600 flex items-center gap-1 transition-colors"
       >
-        {isOpen ? '⬇ Cacher les sources' : `➡ Voir les ${sources.length} sources`}
+        {isOpen ? '⬇ Cacher les détails techniques' : `➡ Voir les ${sources.length} sources analysées`}
       </button>
       
       {isOpen && (
         <div className="mt-2 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
           {sources.map((source, idx) => {
             const isExpanded = expandedSource === idx;
+            const isIdentity = source.is_identity;
+
             return (
               <div 
                 key={idx} 
                 onClick={() => setExpandedSource(isExpanded ? null : idx)}
                 className={`text-[11px] p-2 rounded border transition-all cursor-pointer ${
-                  isExpanded 
-                    ? 'bg-blue-50 border-blue-200 text-gray-800' 
-                    : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'
-                }`}
+                  isIdentity ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-100'
+                } ${isExpanded ? 'shadow-md' : 'hover:bg-gray-100'}`}
               >
-                <div className="flex justify-between items-start">
-                  <span className="font-semibold text-[9px] text-blue-400 mb-1 block">SOURCE #{idx + 1}</span>
-                  <span className="text-[9px]">{isExpanded ? 'Réduire ▲' : 'Lire tout ▼'}</span>
+                <div className="flex justify-between items-center mb-1">
+                  <span className={`font-bold text-[9px] uppercase ${isIdentity ? 'text-blue-600' : 'text-gray-400'}`}>
+                    {isIdentity ? '📑 Fiche Identité' : `📦 Chunk #${source.chunk_index || idx}`}
+                  </span>
+                  <span className="text-[8px] text-gray-400">{isExpanded ? 'Réduire ▲' : 'Détails ▼'}</span>
                 </div>
                 
-                <p className={`${isExpanded ? '' : 'line-clamp-2 italic'}`}>
-                  "{source.text}"
+                {/* Titre du chunk ou nom du doc */}
+                <p className="font-semibold text-gray-700 truncate">
+                  {source.heading_full || "Sans titre"}
                 </p>
+
+                {isExpanded && (
+                  <div className="mt-2 space-y-3 pt-2 border-t border-gray-200 animate-in zoom-in-95 duration-150">
+                    
+                    {/* LE TEXTE ENVOYÉ AU RERANKER (Le plus important) */}
+                    <div>
+                      <span className="text-[8px] font-bold text-red-400 uppercase">Input Reranker / LLM :</span>
+                      <div className="mt-1 p-2 bg-gray-900 text-green-400 font-mono text-[10px] rounded leading-tight">
+                        {source.text_for_reranker || source.text}
+                      </div>
+                    </div>
+
+                    {/* IMAGES & VISUAL SUMMARY */}
+                    {(source.images_urls?.length > 0 || source.visual_summary) && (
+                      <div className="space-y-2">
+                        <span className="text-[8px] font-bold text-purple-500 uppercase">Analyse Visuelle :</span>
+                        {source.images_urls?.map((url, i) => (
+                          <img key={i} src={url} alt="Source" className="max-w-full rounded border border-purple-200" />
+                        ))}
+                        {source.visual_summary && (
+                          <p className="p-2 bg-purple-50 text-purple-700 rounded italic text-[10px]">
+                            "{source.visual_summary}"
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* TABLES BRUTES */}
+                    {source.tables && source.tables.length > 0 && (
+                      <div>
+                        <span className="text-[8px] font-bold text-orange-500 uppercase">Données Tabulaires :</span>
+                        <div className="mt-1 overflow-x-auto p-1 bg-orange-50 text-orange-800 rounded text-[9px]">
+                          <pre>{JSON.stringify(source.tables, null, 2)}</pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

@@ -143,7 +143,7 @@ async def ingest_pdf(file: UploadFile = File(...)):
 
         original_filename = file.filename if file.filename else "unknown_file"
 
-        store_vectors_incrementally(vectorized_docs=vectorised_chunks)
+        await store_vectors_incrementally(vectorized_docs=vectorised_chunks)
         print("🔥 vectored chunks stored 🔥")
 
         
@@ -181,12 +181,12 @@ async def ingest_pdf(file: UploadFile = File(...)):
 chat_history = []
 
 @app.get("/query")
-async def query_rag(question: str, limit: int = 30):
+async def query_rag(question: str, limit: int = 20):
     global chat_history
 
     try:
         # 1. Rewrite : On transforme la question "élève" en question "autonome"
-        standalone_query = rewrite_query(question, chat_history)
+        standalone_query = await rewrite_query(question, chat_history)
 
         # 2. Retrieve + Rerank + Group (Tout est packagé dans retrieve_chunks maintenant)
         # On récupère directement la liste finale : [Identité, Chunk1, Chunk2, Identité2, ...]
@@ -201,7 +201,7 @@ async def query_rag(question: str, limit: int = 30):
 
         # 3. Generation : On passe le contexte groupé au Professeur
         print("🧠 Step: Generating Answer...")
-        answer = generate_answer_with_history(question, final_context, chat_history)
+        answer = await generate_answer_with_history(question, final_context, chat_history)
 
         # 4. Retour au Frontend
         # 'final_context' contient déjà 'visual_summary', 'text', 'images_urls', etc.

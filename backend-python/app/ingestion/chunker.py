@@ -20,7 +20,7 @@ class ImgAnnotationSerializerProvider(ChunkingSerializerProvider):
     
 def get_chunker():
     """Cache le chunker pour éviter de recharger le tokenizer"""
-    max_tokens = int(os.getenv("CHUNK_SIZE_TOKENS", 800))
+    max_tokens = int(os.getenv("CHUNK_SIZE_TOKENS", 700))
     hf_tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3", trust_remote_code=True)
     tokenizer = HuggingFaceTokenizer(
         tokenizer=hf_tokenizer,
@@ -29,9 +29,10 @@ def get_chunker():
     # C'est ICI qu'on injecte le SerializerProvider
     return HybridChunker(
         tokenizer=tokenizer, 
-        merge_peers=False,
+        merge_peers=True,
         serializer_provider=ImgAnnotationSerializerProvider(),
-        max_tokens = max_tokens
+        max_tokens = max_tokens,
+        enforce_max_tokens=True
     )
 
 def create_chunks(doc):

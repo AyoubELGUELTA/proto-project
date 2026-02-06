@@ -36,10 +36,15 @@ def vectorize_documents(docs): # docs which are the summarized chunks
         if isinstance(embedding, list) and len(embedding) > 0 and isinstance(embedding[0], list):
             embedding = embedding[0]  # Extraire le vecteur réel
         
+        if chunk["visual_summary"] != "": 
+            chunk_full_content = f"{chunk['text']}, [VISUAL DESCRIPTION] {chunk['visual_summary']}"
+        else :
+            chunk_full_content = chunk["text"]
         
         vectorized_docs.append({
             "chunk_id": chunk["chunk_id"],
-            "embedding": embedding
+            "embedding": embedding,
+            "chunk_full_content": chunk_full_content
         })
 
     print(f"\n🔍 DEBUG embedding:")
