@@ -1,7 +1,6 @@
 import os
 import uuid
 import time
-import shutil
 import gc
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +21,8 @@ from .rag.reranker import rerank_results
 from .rag.query_rewriter import rewrite_query
 from .utils.s3_storage import storage
 from .utils.processor import process_enriched_chunks
-
+import aiofiles 
+import asyncio
 from docling_core.types.doc import PictureItem
 
 app = FastAPI(title="Dawask RAG Prototype")
@@ -78,24 +78,16 @@ async def ingest_pdf(file: UploadFile = File(...)):
         doc_uuid = await get_or_create_document(file.filename)
         file_path = os.path.join(UPLOAD_DIR, f"{doc_uuid}.pdf")
 
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Utilisation de aiofiles pour ne pas bloquer le thread principal
+        async with aiofiles.open(file_path, "wb") as out_file:
+            content = await file.read()  # Lecture async
+            await out_file.write(content)
 
         #  Partition of PDF
         t0 = time.perf_counter()
 
         doc = partition_document(file_path)
-        # --- DEBUG IMAGES DANS LE DOC ---
-        print(f"🔍 DEBUG: Nombre de pages dans le doc: {len(doc.pages)}")
-        # Vérifier les images globales
-        num_pictures = len(list(doc.iterate_items())) # On va compter les items de type Picture
-        pictures_found = [item for item, _level in doc.iterate_items() if "PictureItem" in str(type(item))]
-        print(f"🔍 DEBUG: Nombre d'items 'PictureItem' détectés dans le doc entier: {len(pictures_found)}")
-
-        if hasattr(doc, 'pictures'):
-            print(f"🔍 DEBUG: Nombre d'entrées dans doc.pictures: {len(doc.pictures)}")
-        # --------------------------------
-
+        
         t1 = time.perf_counter()
         print("🔥 PDF PARTIIONNED 🔥")
 
@@ -121,8 +113,6 @@ async def ingest_pdf(file: UploadFile = File(...)):
         )
 
         print(f"✅ Fiche identité créée : {identity_data['token_count']} tokens")
-        print(f"   Pages échantillonnées : {identity_data.get('pages_sampled', [])}")
-
         
         enriched_chunks = process_enriched_chunks(doc, chunks)          
             
@@ -136,32 +126,26 @@ async def ingest_pdf(file: UploadFile = File(...)):
         summarised_chunks = await summarise_chunks(enriched_chunks, chunk_ids)
         print("🔥 Chunks smmarized 🔥")
         
-        vectorised_chunks = vectorize_documents(summarised_chunks)
-
+        vectorised_chunks = await vectorize_documents(summarised_chunks) 
         t4 = time.perf_counter()
         print("🔥 Chunks vectorized 🔥")
-
-        original_filename = file.filename if file.filename else "unknown_file"
 
         await store_vectors_incrementally(vectorized_docs=vectorised_chunks)
         print("🔥 vectored chunks stored 🔥")
 
-        
-        
         end_time = time.perf_counter()
         duration = round(end_time - start_time, 2)
 
-        # On sécurise l'affichage pour éviter l'erreur ASCII au cas où
-        first_chunk_preview = str(summarised_chunks[0])[:200] # Un aperçu court
 
-        del doc, chunks
-        gc.collect() # Force la libération de la RAM sur le Mac
+        # Nettoyage
+        del doc, chunks, enriched_chunks, summarised_chunks
+        gc.collect()
+
         return {
             "status": "success",
             "doc_id": doc_uuid,
-            "filename": original_filename,
+            "filename": file.filename if file.filename else "unknown_file",
             "chunks_stored": len(chunk_ids),
-            "first_chunk_summarized": first_chunk_preview,
             "timings": {
                 "partition": round(t1 - t0, 2),
                 "chunking": round(t2 - t1, 2),

@@ -20,16 +20,16 @@ client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
 async def search_vector_only(query_vector, doc_id=None, collection_name="all_documents", limit=12):
     """Effectue la recherche vectorielle pure (le vecteur est déjà calculé)"""
     try:
-        search_result = await client.search(
+        search_result = await client.query_points(
             collection_name=collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             limit=limit,
             score_threshold=0.05,
             query_filter=Filter(
                 must=[FieldCondition(key="doc_id", match=MatchValue(value=doc_id))]
             ) if doc_id else None
         )
-        return [{"chunk_id": str(hit.id), "score": hit.score} for hit in search_result]
+        return [{"chunk_id": str(hit.id), "score": hit.score} for hit in search_result.points]
     except Exception as e:
         print(f"❌ Qdrant vector search error: {repr(e)}")
         return []
@@ -92,7 +92,11 @@ async def retrieve_chunks(query, doc_id=None, limit=20):
     # --- PHASE 2 : RECHERCHE VECTORIELLE ---
     # On a le vecteur, on peut chercher dans Qdrant
     vector_hits = await search_vector_only(query_vector, doc_id=doc_id, limit=limit)
-
+    # --- DEBUG ---
+    if keyword_hits:
+        print(f"DEBUG Keyword Hit Type: {type(keyword_hits[0])}")
+        print(f"DEBUG Keyword Hit Content: {keyword_hits[0]}")
+# -------------
     # Fusion des IDs uniques
     combined_ids = set()
     for hit in vector_hits: combined_ids.add(hit["chunk_id"])
@@ -108,8 +112,12 @@ async def retrieve_chunks(query, doc_id=None, limit=20):
     if not chunks_from_db: return []
     
     # Reranking (Top 15 final)
-    reranked_chunks = rerank_results(query, chunks_from_db, top_n=15)
-    
+    reranked_chunks = await asyncio.to_thread(
+    rerank_results, 
+    query, 
+    chunks_from_db, 
+    15
+)
     # Identités des documents
     doc_ids_in_results = list({c["doc_id"] for c in reranked_chunks})
     all_identities = await fetch_identities_by_doc_ids(doc_ids_in_results)

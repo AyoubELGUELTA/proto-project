@@ -64,6 +64,29 @@ async def create_identity_chunk(
         print(f"❌ Erreur lors de la création de la fiche identité : {e}")
         # Fallback : créer une fiche minimale
         return create_fallback_identity(doc_title, toc)
+    
+def create_fallback_identity(doc_title: Optional[str], toc: str) -> Dict[str, Any]:
+    # On force un nettoyage du sommaire pour s'assurer qu'il y a des retours à la ligne
+    formatted_toc = toc.replace(". ", ".\n- ") # Simple hack pour aérer si c'est collé
+
+    identity_text = f"""
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    📋 FICHE IDENTITÉ DU DOCUMENT
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    📚 TITRE: {doc_title or "Titre non détecté"}
+    📖 TYPE: Document religieux / éducatif
+    🎯 SUJET: Contenu en cours d'analyse
+
+    STRUCTURE DU DOCUMENT:
+    - {formatted_toc}
+
+    🔑 THÈMES CLÉS: À déterminer
+    🕌 CONTEXTE: Islam / Académique
+
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    """.strip()
+    return {"identity_text": identity_text, "token_count": 0}
 
 def extract_table_of_contents(doc: DoclingDocument) -> str:
     """
@@ -179,10 +202,11 @@ EXTRAITS DU DOCUMENT:
 {sampled_text}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 TÂCHE: Crée une FICHE IDENTITÉ ultra-condensée (MAX 400 mots).
+TU DOIS IMPÉRATIVEMENT UTILISER DES RETOURS À LA LIGNE ENTRE CHAQUE ÉLÉMENT.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-FORMAT STRICT À RESPECTER:
+FORMAT STRICT À RESPECTER :
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📋 FICHE IDENTITÉ DU DOCUMENT
@@ -192,51 +216,26 @@ FORMAT STRICT À RESPECTER:
 📖 TYPE: [biographie / cours / essai / etc.]
 🎯 SUJET: [résumé en 2,3 phrases de quoi parle le document]
 
-STRUCTURE DU DOCUMENT:
-[Liste numérotée des chapitres/sections AVEC numéros de page]
-Si tu as le Sommaire, tu recopies le sommaire tel quel, avec les numéro de page et les noms de chapitres
-Exemple:
-1. Chapitre 1 (p.15-32)
-2. Chapitre 2 (p.33-46)
+STRUCTURE DU DOCUMENT (SOMMAIRE) :
+(Chaque chapitre DOIT être sur une nouvelle ligne avec un tiret)
+- 1. [Nom Chapitre] (p.[numéro])
+- 2. [Nom Chapitre] (p.[numéro])
 ...
-A défault de ne pas avoir des chapitres/sections, donne la structure du document, comment c'est organisé.
 
 🔑 THÈMES CLÉS: [3-5 mots-clés séparés par virgules]
-[OPTIONNEL] 🕌 CONTEXTE: [époque, lieu, cadre si pertinent - 1,2 lignes max], si tu trouves du contexte dans les pages échantillonées.ß
+
+🕌 CONTEXTE: [époque, lieu, cadre si trouvé dans les pages échantillonnées - 1,2 lignes max]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CONTRAINTES CRITIQUES:
-- MAX 400 mots (compte-les !)
-- Pas de détails narratifs ou anecdotes
-- Juste la structure + thèmes + index
-- Format ultra-scannable pour un LLM
-- Les numéros de page sont ESSENTIELS
+RÈGLES D'OR DE MISE EN PAGE :
+1. INTERDICTION FORMELLE de faire des paragraphes de texte compacts pour le sommaire. 
+2. UN CHAPITRE = UNE LIGNE. C'est crucial pour la distinction sémantique.
+3. Ne mélange jamais les noms de personnes ou de sections sur la même ligne.
+4. Les numéros de page sont ESSENTIELS.
+5. Format ultra-scannable pour un LLM et un Reranker.
 
 COMMENCE DIRECTEMENT PAR "━━━━━..." (pas de préambule).
-""".strip()
-
-
-def create_fallback_identity(doc_title: Optional[str], toc: str) -> Dict[str, Any]:
-    """
-    Crée une fiche identité minimale en cas d'échec de l'API.
-    """
-    identity_text = f"""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 FICHE IDENTITÉ DU DOCUMENT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📚 TITRE: {doc_title or "Titre non détecté"}
-📖 TYPE: Document religieux et/ou éducatif/scolaire
-🎯 SUJET: Contenu en cours d'analyse
-
-STRUCTURE DU DOCUMENT:
-{toc}
-
-🔑 THÈMES CLÉS: À déterminer
-🕌 CONTEXTE: Islam et/ou Académique
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """.strip()
     
     return {

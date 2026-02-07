@@ -2,7 +2,7 @@ import os
 import torch
 from sentence_transformers import SentenceTransformer
 from typing import List
-
+import asyncio 
 class LocalEmbeddingClient:
     def __init__(self):
         # "mps" tells the Mac to use its Metal GPU (Silicon chip)
@@ -26,30 +26,29 @@ class LocalEmbeddingClient:
         )
         print(f"✅ BGE-M3 loaded successfully (max tokens: 8192)")
 
+    async def embed_query(self, query: str) -> List[float]:
+        # ✅ On utilise asyncio.to_thread pour ne pas bloquer l'Event Loop
+        # pendant que le CPU/GPU calcule le vecteur
+        return await asyncio.to_thread(self._sync_embed_query, query)
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """
-        Embedde les documents/chunks pour l'indexation.
-        BGE-M3 n'a pas besoin de préfixe spécifique pour les passages.
-        """
-        if isinstance(texts, str):
-            texts = [texts]  # Need to be a list of str
-
-        embeddings = self.model.encode(
-            texts, 
-            convert_to_numpy=True,
-            batch_size=32,  # ✅ Ajuster selon votre RAM/GPU
-            show_progress_bar=True  # ✅ Utile pour debug
-        )
-        
-        return embeddings.tolist()
-
-    def embed_query(self, query: str) -> List[float]:
-        # Solon performs better if you tell it it's a query
+    def _sync_embed_query(self, query: str) -> List[float]:
         instructional_query = f"Represent this sentence for searching relevant passages: {query}"
         embedding = self.model.encode(
             instructional_query, 
             convert_to_numpy=True
-
         ) 
         return embedding.tolist()
+
+    async def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return await asyncio.to_thread(self._sync_embed_documents, texts)
+
+    def _sync_embed_documents(self, texts: List[str]) -> List[List[float]]:
+        if isinstance(texts, str):
+            texts = [texts]
+        embeddings = self.model.encode(
+            texts, 
+            convert_to_numpy=True,
+            batch_size=16,
+            show_progress_bar=True
+        )
+        return embeddings.tolist()

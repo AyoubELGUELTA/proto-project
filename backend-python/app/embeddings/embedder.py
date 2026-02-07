@@ -15,8 +15,8 @@ else:
 
 
 
-def vectorize_documents(docs): # docs which are the summarized chunks
-    """Convert LangChain Document objects into embedding vectors"""
+async def vectorize_documents(docs): # docs which are the summarized chunks
+    """Convert summarized chunks dicts into embedding vectors"""
 
     vectorized_docs = []
 
@@ -32,7 +32,7 @@ def vectorize_documents(docs): # docs which are the summarized chunks
         else:
             enriched_text = text
 
-        embedding = embedding_client.embed_documents(enriched_text)
+        embedding = await embedding_client.embed_documents(enriched_text)
         if isinstance(embedding, list) and len(embedding) > 0 and isinstance(embedding[0], list):
             embedding = embedding[0]  # Extraire le vecteur réel
         

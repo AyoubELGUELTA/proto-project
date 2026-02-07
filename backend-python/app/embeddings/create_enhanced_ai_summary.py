@@ -6,26 +6,19 @@ from langchain_core.messages import HumanMessage
 from typing import List, Dict, Any, cast
 from .normalize_llm_response import normalize_llm_content  # to stringify the llm response
 
-def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) -> Tuple[str, str]:
-    """
-    Merge multimodal content into a compact, embeddable text.
-    - If only text is present -> return text unchanged
-    - If tables/images are present -> LLM integrates ONLY their factual contribution
-    """
-
-    # BYPASS LLM if no multimodal content, economy on credits
+async def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) -> Tuple[str, str]:
     if not images and not tables:
-        return text
+        return text, ""
 
     try:
-
         api_key = os.getenv("OPENAI_API_KEY")
-        model_name = os.getenv("SUMMARIZER_MODEL_NAME", "gpt-4.1-nano-2025-04-14")
-        # Initialize LLM (vision-capable for images)
+        model_name = os.getenv("SUMMARIZER_MODEL_NAME", "gpt-4o-mini") # Utilise gpt-4o-mini pour l'ingestion, c'est bcp moins cher
+        
+        # Initialisation du client Async
         llm = ChatOpenAI(
             model=model_name,
-            api_key = api_key,
-            temperature=1
+            api_key=api_key,
+            temperature=0.1 # On baisse la température pour plus de faits bruts
         )
 
         # STRICT, NON-EXPANSIVE PROMPT
@@ -77,23 +70,16 @@ def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) 
                 })
 
         # Invoke LLM
-        message = HumanMessage(
-            content=message_content
-        ) 
-        response = llm.invoke([message])
-        ai_response = response.content.strip()
+        message = HumanMessage(content=message_content) 
+        response = await llm.ainvoke([message])
+        
+        ai_response = cast(str, response.content).strip()
+        
         if "RAS" not in ai_response.upper():
-            print(f"🔍 AI ENRICHMENT LOG : {ai_response}")
-            
-            # Nettoyage robuste du Markdown pour BGE
             import re
-            # 1. Supprime les lignes de séparateurs de tableaux (|---|---|)
             clean_text = re.sub(r'^\s*\|[\s\-\|]+\|\s*$', '', text, flags=re.MULTILINE)
-            # 2. Supprime les lignes de contenu (| val |) même si elles sont mal formées
             clean_text = re.sub(r'^\s*\|.*\|\s*$', '', clean_text, flags=re.MULTILINE)
-            # 3. Supprime les sauts de ligne multiples créés par le nettoyage
             clean_text = re.sub(r'\n\s*\n', '\n\n', clean_text).strip()
-            
             
             return clean_text, normalize_llm_content(ai_response)
         else:
@@ -102,5 +88,4 @@ def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) 
 
     except Exception as e:
         print(f"⚠️ Erreur LLM Vision: {e}")
-        # Fallback: return original text unchanged
-        return text
+        return text, ""

@@ -1,6 +1,4 @@
-from qdrant_client import AsyncQdrantClient 
-from qdrant_client.http import models
-from qdrant_client.models import PointStruct, VectorParams, Distance
+from qdrant_client import AsyncQdrantClient, models
 import os
 
 # Client partagé pour réutiliser les connexions (meilleur pour les perfs)
@@ -24,11 +22,8 @@ async def setup_full_text_search(collection_name):
         tokenizer=models.TokenizerType.MULTILINGUAL,
         lowercase=True,
         ascii_folding=True, # Très important pour les recherches en français/arabe
-        # On regroupe les paramètres techniques dans index_params
-        index_params=models.TextIndexConfig(
-            on_disk=True,
-            distance=1 # Fuzzy Match
-        )
+        on_disk=True,
+        
     )
 )
 
@@ -57,7 +52,7 @@ async def store_vectors_incrementally(vectorized_docs, collection_name="all_docu
         
         await client.create_collection(
             collection_name=collection_name,
-            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
+            vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE)
         )
         
         # ✅ On configure l'index plein-texte immédiatement après création
@@ -65,13 +60,12 @@ async def store_vectors_incrementally(vectorized_docs, collection_name="all_docu
 
     # 2. Préparation des points
     points = [
-        PointStruct(
+        models.PointStruct(
             id=doc["chunk_id"], 
             vector=doc["embedding"],
             payload={ 
                 "page_content": doc["chunk_full_content"], # Contenu pour le MatchText
                 "chunk_id": doc["chunk_id"],
-                "doc_id": doc["metadata"].get("doc_id") # Important pour tes filtres par doc !
             }
         ) for doc in vectorized_docs
     ]
@@ -91,15 +85,40 @@ async def store_vectors_incrementally(vectorized_docs, collection_name="all_docu
 async def keyword_search(query_text, collection_name="all_documents", limit=15):
     client = get_qdrant_client()
     # On nettoie un peu la query pour le plein texte
-    keywords = " ".join([w for w in query_text.split() if len(w) > 2])
-    
-    results = await client.query_points( 
+    keywords = clean_query_for_keyword(query_text)
+    if not keywords:
+        return []
+    word_list = keywords.split()
+    print(f"🔎 DEBUG Keyword Search - Query brute: '{query_text}' -> Keywords filtrés: '{keywords}'")
+    results = await client.query_points(
         collection_name=collection_name,
         query=None,
         query_filter=models.Filter(
-            must=[models.FieldCondition(key="page_content", match=models.MatchText(text=keywords))]
+            should=[ # "should" = OR (Mieux pour le rappel)
+                models.FieldCondition(
+                    key="page_content", 
+                    match=models.MatchText(text=word)
+                ) for word in word_list
+            ]
         ),
         limit=limit
     )
     return results.points
 
+
+def clean_query_for_keyword(query: str) -> str:
+    # Liste étendue de mots à ignorer (Stopwords français)
+    stopwords = {
+        "le", "la", "les", "un", "une", "des", "du", "de", "ce", "cette", "ces",
+        "est", "sont", "était", "étaient", "fait", "faites", "quels", "quelles",
+        "quel", "quelle", "pour", "dans", "sur", "avec", "par", "pourquoi",
+        "comment", "quand", "qui", "que", "quoi", "qu'est-ce", "est-ce", "selon"
+    }
+    
+    # Nettoyage ponctuation et mise en minuscule
+    words = query.lower().replace("?", "").replace("!", "").replace(",", "").split()
+    
+    # On ne garde que les mots qui ne sont pas des stopwords et qui font > 2 lettres
+    filtered = [w for w in words if w not in stopwords and len(w) > 2]
+    
+    return " ".join(filtered)

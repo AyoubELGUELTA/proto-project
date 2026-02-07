@@ -232,11 +232,25 @@ async def get_chunk_with_metadata(chunk_id: str) -> Optional[Dict[str, Any]]:
 async def store_identity_chunk(
     doc_id: str,
     identity_text: str,
-    pages_sampled: List[int]
+    pages_sampled: Any
 ) -> str:
     """
     Stocke le chunk identité d'un document.
     """
+    clean_pages = []
+    if isinstance(pages_sampled, list):
+        for p in pages_sampled:
+            try:
+                # On essaie de convertir chaque élément en entier
+                clean_pages.append(int(p))
+            except (ValueError, TypeError):
+                # Si c'est "Complet" ou autre chose, on ignore cet élément
+                continue
+    
+    # Si la liste est vide après filtrage, on met par défaut [1000]
+    if not clean_pages:
+        clean_pages = [1000]
+
     chunk_id = str(uuid.uuid4())
     conn = await get_connection()
     
@@ -252,7 +266,7 @@ async def store_identity_chunk(
             chunk_id, doc_id, -1, identity_text,
             "", # visual_summary vide pour l'identité, pas d'image ou de tableau en principe
             json.dumps(["DOCUMENT_IDENTITY"]), "DOCUMENT_IDENTITY",
-            pages_sampled, json.dumps([]), [], 'identity', True
+            clean_pages, json.dumps([]), [], 'identity', True
         )
         
         print(f"✅ Chunk identité stocké : {chunk_id}")
