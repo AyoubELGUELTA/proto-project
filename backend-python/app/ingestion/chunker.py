@@ -18,9 +18,9 @@ class ImgAnnotationSerializerProvider(ChunkingSerializerProvider):
             picture_serializer=MarkdownPictureSerializer(),
         )
     
-def get_chunker():
+def get_chunker(max_tokens: int = 1100):
     """Cache le chunker pour éviter de recharger le tokenizer"""
-    max_tokens = int(os.getenv("CHUNK_SIZE_TOKENS", 700))
+    
     hf_tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3", trust_remote_code=True)
     tokenizer = HuggingFaceTokenizer(
         tokenizer=hf_tokenizer,
@@ -35,22 +35,21 @@ def get_chunker():
         enforce_max_tokens=True
     )
 
-def create_chunks(doc):
+def create_chunks(doc, max_tokens: int = 1100):
     """
     Découpe le document en respectant la hiérarchie (Layout-Aware).
     """
-    chunker = get_chunker()
+    chunker = get_chunker(max_tokens = 1100)
     
     try:
         chunks = list(chunker.chunk(doc))
-        print(f"✅ Layout-Aware Chunking réussi : {len(chunks)} chunks créés.")
         
         # 🔍 Debug : vérifier la taille des chunks
-        hf_tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3", trust_remote_code=True)
-        for i, chunk in enumerate(chunks[:3]):  # DEBUG 3 premiers chunks
-            num_tokens = len(hf_tokenizer.encode(chunk.text))
-            num_chars = len(chunk.text)
-            print(f"  📄 Chunk {i}: {num_tokens} tokens, {num_chars} caractères")
+        # hf_tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3", trust_remote_code=True)
+        # for i, chunk in enumerate(chunks[:3]):  # DEBUG 3 premiers chunks
+        #     num_tokens = len(hf_tokenizer.encode(chunk.text))
+        #     num_chars = len(chunk.text)
+        #     print(f"  📄 Chunk {i}: {num_tokens} tokens, {num_chars} caractères")
         
         return chunks
     except Exception as e:

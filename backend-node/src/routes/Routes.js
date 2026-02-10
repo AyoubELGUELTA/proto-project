@@ -8,7 +8,7 @@ const documentController = require('../controllers/documentController');
 // Configuration de Multer pour garder le fichier en mémoire vive
 const upload = multer({ 
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 } // Limite à 10 MB
+    limits: { fileSize: 15 * 1024 * 1024 } // Limite à 10 MB
 });
 
 

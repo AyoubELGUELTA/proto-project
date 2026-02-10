@@ -1,5 +1,5 @@
 import os
-import httpx  # 👈 Remplace requests par httpx
+import httpx 
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -57,53 +57,65 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false" #To prevent a warning message, no
 # Ton objectif est d'être utile et pédagogique tout en restant 100 pourcent fidèle au contenu des documents. Aide l'utilisateur au maximum avec ce qui est disponible, mais ne franchis jamais la ligne en ajoutant des informations externes. Ne COMPLEXIFIE PAS ta réponse 
 # avec des informations parasytes si l'utilisateur ne le demande pas, mais suggere a la fin de ta réponse si il veut en savoir plus sur ce que tu as trouvé."""
 
-def get_system_instruction_answer_generation():
-    return """Tu es un Professeur expert, pédagogue et précis. 
-Ta connaissance est STRICTEMENT limitée aux informations contenues dans le CONTEXTE fourni. 
+def get_prompt_light():
+    return """Vous êtes un Professeur expert. Répondez à l'élève de manière directe.
+- Votre connaissance est strictement limitée au contexte fourni.
+- Si le sujet est absent, répondez : "Je ne peux pas aider sur ce sujet."
+- Pas de verbes de citation ("le document dit").
+- Structurez en listes ou paragraphes clairs, sans introduction."""
 
-CONSIGNE DE SÉCURITÉ ABSOLUE :
-- Si la question de l'élève porte sur un sujet absent du CONTEXTE (ex: football, célébrités, actualités générales), tu dois IMPÉRATIVEMENT répondre : "Je n'ai pas cette information dans mes ressources actuelles pour te répondre précisément."
-- Ne tente JAMAIS de répondre par tes propres connaissances ou de faire des hypothèses.
-- Ne propose JAMAIS de pistes de réflexion sur des sujets hors-contexte.
+def get_prompt_verbose():
+    return """Tu es un Professeur expert, analyse documentaire.
+Ton rôle est d’identifier, organiser et restituer fidèlement les informations des documents, sans simplification abusive, et de répondre à l'élève de manière directe.
 
-POSTURE ET TON :
-- Parle avec l'autorité d'un expert, mais reste humble face aux limites de tes ressources.
-- Ne fais AUCUNE REFERENCE au fait que tu lis des documents (pas de "Le texte dit", "Source 1", etc.). Réponds comme si le savoir t'étais inné.
-- Interdiction de citer des noms ou des faits qui ne sont pas écrits noir sur blanc dans les données reçues.
+RÈGLES :
+1. BASE-TOI UNIQUEMENT sur les documents fournis. N'utilise JAMAIS tes connaissances externes.
+2. NUANCES : Respecte les distinctions précises (ex: "l'état prend fin" vs "les interdits se terminent").
+3. RÉPONSES PARTIELLES : Si tu n'as que 3 étapes sur 5 demandées, liste les 3 et précise : "Voici l'ensemble des informations qui sont a ma connaissance." ou une phrase du genre.
+4. TOLÉRANCE LINGUISTIQUE : Accepte les variantes (Wudu/Woudou) mais utilise les termes exacts du texte dans ta réponse.
+5. HONNÊTETÉ : Si l'info est absente, dis : "Je n'ai pas trouvé d'information dans les documents fournis." ou une phrase du style.
+6. STRUCTURE : Aide l'utilisateur avec des exemples concrets extraits des documents.
+En fin de réponse, suggère un approfondissement basé sur ce que tu as trouvé dans les connaissances reçues."""
 
-RÈGLES DE RÉPONSE :
-1. Utilise les détails des tableaux et des analyses visuelles (visual_summary) comme des faits mémorisés.
-2. Si l'information est partielle dans le document, donne uniquement la partie présente sans extrapoler.
-3. Si la question est "Qui est le meilleur footballeur ?" et que le document traite de nutrition, tu réponds la phrase de refus standard et rien d'autre.
+def get_prompt_reasoning():
+    return """Tu es un analyste rigoureux. Avant de répondre, tu dois décomposer ton raisonnement.
 
-STRUCTURE :
-- Académique, structuré (listes à puces).
-- En fin de réponse, propose à l'élève d'approfondir UNIQUEMENT des notions présentes dans le contexte reçu."""
+STRUCTURE IMPÉRATIVE :
+1. <pensee> : 
+   - Liste les entités (noms propres, lieux) trouvées dans les chunks.
+   - Identifie les dates ou la chronologie.
+   - Note les éventuelles contradictions entre les sources.
+</pensee>
+
+2. RÉPONSE FINALE : 
+   - Applique les règles de fidélité absolue (PAS DE CONNAISSANCES EXTERNES).
+   - Réponds de manière structurée et pédagogique.
+   - Si une information manque pour conclure, mentionne-le explicitement.
+   - En fin de réponse, suggère un approfondissement basé sur ce que tu as trouvé dans les connaissances reçues."""
 
 def get_system_instruction_rewriter():
-    return """Tu es un réécrivain de requêtes.
-Ta SEULE tâche consiste à réécrire la dernière question de l'utilisateur
-en une question autonome et entièrement explicite, EN FRANCAIS.
+    return """
+    Tu es un expert en reformulation de requêtes pour un système RAG.
+    Ta mission : Tout en tenant compte de l'historique (s'il n'est pas vide), produire 3 variantes de recherche sémantique et 1 liste de mots-clés BM25.
 
-Règles :
-- Utilise UNIQUEMENT l'historique de la conversation.
-- Ne réponds PAS à la question.
-- N'ajoute PAS de nouvelles informations.
-- Ne fais PAS de déductions.
-- Si l'intention est ambiguë, conserve l'ambiguïté.
-- Ne produis QUE la requête réécrite.
-- Ajoute a la fin de la requete, d'apres les documents, ou selon les données présentes. 
-  Ex : Question initiale: "Quel age a-t-il?" Réecriture indépendante de la question: "Quel age a Ayoub, selon les documents fournis?"
-- Si tu NE PEUX PAS réecrire la requete, car elle est trop ambigue ou n'a aucun rapport avec l'historique, 
-  alors tu RENVOIE EXACTEMENT la meme question que tu as reçue initalement.
-"""
+RÈGLES :
+- Variante 1 : Traduction fidèle de l'intention (résolution de coréférence a l'historique de discussion).
+- Variante 2 : Recherche orientée chronologie, faits marquants ou relations.
+- Variante 3 : Recherche incluant les variantes de noms propres (français/arabe/phonétique).
+- Mots-clés : Uniquement noms propres et termes techniques (sans articles), s'il y a des mots phonétiques, ajoute dans la liste 3 alternatives d'écritures possible (ex: woudou, wudu, al-oudou).
 
-async def call_gpt_4o_mini(content_list, summarizing = False, max_tokens = 3000):
-    """Function: call to openai's llm gpt-4o-mini, or gpt 4.1 nano, with the content_list parameter as a payload
-    the summarizing parameter is set True if we want the model to summarize images or tables during the ingestion pipline"""
+FORMAT DE SORTIE IMPÉRATIF :
+V1: [Phrase 1]
+V2: [Phrase 2]
+V3: [Phrase 3]
+KEYWORDS: [Mot1, Mot2, Mot3...]"""
 
+async def call_gpt_4o_mini(content_list, rewriting=False, style="verbose", max_tokens=3000):
+    """
+    Appel à l'IA avec sélection dynamique du prompt système.
+    Styles disponibles : 'light', 'verbose', 'reasoning'
+    """
     api_key = os.getenv("OPENAI_API_KEY")
-
     url = "https://api.openai.com/v1/chat/completions"    
     
     headers = {
@@ -111,22 +123,28 @@ async def call_gpt_4o_mini(content_list, summarizing = False, max_tokens = 3000)
         "Content-Type": "application/json"
     }   
 
+    # Sélection du prompt système
+    if rewriting:
+        system_instruction = get_system_instruction_rewriter()
+    else:
+        # Mapping des styles pour le benchmark
+        prompts = {
+            "light": get_prompt_light(),
+            "verbose": get_prompt_verbose(),
+            "reasoning": get_prompt_reasoning()
+        }
+        system_instruction = prompts.get(style, get_prompt_verbose())
+
     model = os.getenv("SUMMARIZER_MODEL_NAME", "gpt-4o-mini")
 
     payload = {
-    "model": model,
-    "messages": [
-        {
-            "role": "system", 
-            "content": get_system_instruction_rewriter() if summarizing == True else get_system_instruction_answer_generation() # Texte simple autorisé ici
-        },
-        {
-            "role": "user",
-            "content": content_list
-        }
-    ],
-    "temperature": 0.05,
-    "max_tokens": max_tokens
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": content_list}
+        ],
+        "temperature": 0.05 if rewriting else 0.25,
+        "max_tokens": max_tokens
     }   
 
     try:
@@ -140,65 +158,81 @@ async def call_gpt_4o_mini(content_list, summarizing = False, max_tokens = 3000)
         return "Désolé, je rencontre une difficulté technique pour générer la réponse."
 
 
-async def generate_answer_with_history(question, context_chunks, chat_history=None):
-    """Function : create an answer to the user {question}, by receiving {context_chunks} from the retriever/reranker."""
+async def generate_answer_with_history(question, context_chunks, chat_history=None, style="verbose"):
+    """
+    Génère une réponse en utilisant le formateur de contexte enrichi 
+    et en gérant le payload multimodal (images S3).
+    """
     if chat_history is None:
         chat_history = []
 
     try:
-        # 1. Préparation du contexte et collecte des images
-        formatted_contexts = []
+        # 1. Préparation du contexte textuel et collecte des images
+        formatted_parts = []
         image_urls_for_llm = []
+        
+        # On garde une trace des URLs pour ne pas envoyer 10 fois la même image
+        seen_image_urls = set()
 
-        for i, chunk in enumerate(context_chunks):
-            chunk_repr = f"--- CONNAISSANCE {i+1} ---\n"
+        for chunk in context_chunks:
+            # Gestion de l'Identité du Document (si présente via ton retriever)
+            if chunk.get("is_identity"):
+                title = chunk.get('title', 'Document sans titre')
+                formatted_parts.append(f"\n===== SOURCE : {title} =====")
+                continue
+
+            # Construction du bloc de connaissance précis
+            idx = chunk.get('chunk_index', '?')
+            pages = chunk.get('page_numbers', [])
+            page_str = f"Page(s): {', '.join(map(str, pages))}" if pages else "Page: N/A"
             
-            # Texte pur
-            chunk_repr += f"{chunk['text']}\n"
+            # On privilégie text_for_reranker car il contient déjà souvent le heading + visual_summary
+            text_content = chunk.get('text_for_reranker', chunk.get('text', ''))
             
-            # Résumé visuel (intelligence extraite)
-            if chunk.get('visual_summary'):
-                chunk_repr += f"[SYNTHÈSE VISUELLE : {chunk['visual_summary']}]\n"
+            chunk_repr = f"\n[CONNAISSANCE #{idx} | {page_str}]\n{text_content}\n"
             
-            # Tableaux bruts
+            # Ajout des tableaux s'ils ne sont pas déjà dans le text_for_reranker
             if chunk.get('tables'):
                 for table in chunk['tables']:
-                    chunk_repr += f"\n[TABLEAU BRUT] :\n{table}\n"
-                
-            formatted_contexts.append(chunk_repr)
+                    chunk_repr += f"\n[DONNÉES TABLEAU] :\n{table}\n"
             
-            # Collecte des URLs d'images (S3) pour ce chunk
+            formatted_parts.append(chunk_repr)
+            
+            # Collecte des images pour le payload multimodal
             if chunk.get('images_urls'):
                 for url in chunk['images_urls']:
-                    image_urls_for_llm.append(url)
+                    if url not in seen_image_urls:
+                        image_urls_for_llm.append(url)
+                        seen_image_urls.add(url)
 
-        context_text = "\n\n".join(formatted_contexts)
+        context_text = "\n".join(formatted_parts)
 
-        # 2. Gestion de l'historique
+        # 2. Gestion de l'historique (limite définie dans tes env)
         history_limit = int(os.getenv("CHAT_HISTORY_LIMIT", 6))
         history_str = ""
         for msg in chat_history[-history_limit:]:
-            history_str += f"{msg['role']}: {msg['content']}\n"
+            role = "Élève" if msg['role'] == 'user' else "Professeur"
+            history_str += f"{role}: {msg['content']}\n"
 
-        # 3. Création du "Mega Prompt" (Posture Professeur)
-        # Note : On ne mentionne plus "Extrait du PDF" pour garder le rôle de Professeur
+        # 3. Création du Prompt final
         prompt = f"""
         HISTORIQUE DES ÉCHANGES:
         {history_str}
 
-        TES CONNAISSANCES ACTUELLES :
+        TES CONNAISSANCES ACTUELLES:
         {context_text}
 
         QUESTION DE L'ÉLÈVE: 
         {question}
 
-        RÉPONSE:
+        RÉPONSE DU PROFESSEUR:
         """
 
         # 4. Construction du payload multimodal pour OpenAI
+        # Le texte contient toutes les instructions et le contexte
         content_list = [{"type": "text", "text": prompt}]
 
-        # Ajout des images visuelles (URLs S3)
+        # On ajoute les images physiques à la fin pour que le LLM puisse les "voir"
         for url in image_urls_for_llm:
             content_list.append({
                 "type": "image_url",
@@ -206,7 +240,7 @@ async def generate_answer_with_history(question, context_chunks, chat_history=No
             })
         
         # 5. Appel à l'IA
-        answer = await call_gpt_4o_mini(content_list)
+        answer = await call_gpt_4o_mini(content_list, style=style)
 
         # 6. Mise à jour de l'historique
         chat_history.append({"role": "user", "content": question})

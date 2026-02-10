@@ -12,7 +12,7 @@ def get_qdrant_client():
         _client = AsyncQdrantClient(url=f"http://{host}:{port}", timeout=60)
     return _client
 
-async def setup_full_text_search(collection_name):
+async def setup_full_text_search(collection_name="dev_collection"):
     client = get_qdrant_client()
     await client.create_payload_index(
     collection_name=collection_name,
@@ -28,7 +28,7 @@ async def setup_full_text_search(collection_name):
 )
 
 
-async def store_vectors_incrementally(vectorized_docs, collection_name="all_documents"):    
+async def store_vectors_incrementally(vectorized_docs, collection_name="dev_collection"):    
     """
     Store vectorized documents in Qdrant (Async version).
     """
@@ -82,19 +82,30 @@ async def store_vectors_incrementally(vectorized_docs, collection_name="all_docu
         print(f"❌ ERROR during upsert: {e}")
 
 
-async def keyword_search(query_text, collection_name="all_documents", limit=15):
+async def keyword_search(keywords_input, collection_name="dev_collection", limit=15):
     client = get_qdrant_client()
-    # On nettoie un peu la query pour le plein texte
-    keywords = clean_query_for_keyword(query_text)
-    if not keywords:
+
+    if isinstance(keywords_input, list):
+        keywords_raw = " ".join(keywords_input)
+    else:
+        keywords_raw = str(keywords_input)
+
+    # Nettoyage des caractères de structure
+    keywords_cleaned = keywords_raw.replace("[", "").replace("]", "").replace(",", " ").strip()
+    
+    # On éclate en liste de mots individuels
+    word_list = [w.strip() for w in keywords_cleaned.split() if len(w.strip()) > 1]
+    
+    if not word_list:
         return []
-    word_list = keywords.split()
-    print(f"🔎 DEBUG Keyword Search - Query brute: '{query_text}' -> Keywords filtrés: '{keywords}'")
+
+    print(f"🔎 DEBUG Keyword Search - Mots éclatés pour Qdrant: {word_list}")
+
     results = await client.query_points(
         collection_name=collection_name,
         query=None,
         query_filter=models.Filter(
-            should=[ # "should" = OR (Mieux pour le rappel)
+            should=[ # "OR" sémantique
                 models.FieldCondition(
                     key="page_content", 
                     match=models.MatchText(text=word)
@@ -103,22 +114,5 @@ async def keyword_search(query_text, collection_name="all_documents", limit=15):
         ),
         limit=limit
     )
+    
     return results.points
-
-
-def clean_query_for_keyword(query: str) -> str:
-    # Liste étendue de mots à ignorer (Stopwords français)
-    stopwords = {
-        "le", "la", "les", "un", "une", "des", "du", "de", "ce", "cette", "ces",
-        "est", "sont", "était", "étaient", "fait", "faites", "quels", "quelles",
-        "quel", "quelle", "pour", "dans", "sur", "avec", "par", "pourquoi",
-        "comment", "quand", "qui", "que", "quoi", "qu'est-ce", "est-ce", "selon"
-    }
-    
-    # Nettoyage ponctuation et mise en minuscule
-    words = query.lower().replace("?", "").replace("!", "").replace(",", "").split()
-    
-    # On ne garde que les mots qui ne sont pas des stopwords et qui font > 2 lettres
-    filtered = [w for w in words if w not in stopwords and len(w) > 2]
-    
-    return " ".join(filtered)

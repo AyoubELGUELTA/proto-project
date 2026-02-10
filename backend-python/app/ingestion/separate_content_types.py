@@ -34,9 +34,10 @@ def separate_content_types(chunk, doc: DoclingDocument):
             if isinstance(item, TableItem):
                 try:
                     table_md = item.export_to_markdown()
-                    if table_md and table_md not in content_data['tables']:
-                        content_data['tables'].append(table_md)
-                        print(f"  📊 Tableau trouvé et extrait")
+                    # On vérifie que le markdown existe et n'est pas déjà présent
+                    if table_md and table_md not in content_data['chunk_tables']:
+                        content_data['chunk_tables'].append(table_md)
+                        print(f"  📊 Tableau (Markdown) injecté")
                 except Exception as e:
                     print(f"⚠️ Erreur extraction tableau: {e}")
            

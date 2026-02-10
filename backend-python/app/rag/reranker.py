@@ -2,7 +2,7 @@ import os
 import torch
 from sentence_transformers import CrossEncoder
 import cohere
-
+import time 
 _LOCAL_MODEL_CACHE = None # This keeps the model in memory to avoid reloading on every request
 
 def get_local_reranker():
@@ -28,13 +28,13 @@ def get_local_reranker():
         )
     return _LOCAL_MODEL_CACHE
 
-MIN_RERANK_SCORE = -10 #to test in rEALITY...
+MIN_RERANK_SCORE = 0 #to test in rEALITY...
 
 def rerank_results(query, retrieved_docs, top_n=15):
     """
     Re-rank the search results based on the current ENVIRONMENT.
     """
-
+    start_rerank = time.perf_counter()
     if not retrieved_docs:
         return []
 
@@ -89,6 +89,7 @@ def rerank_results(query, retrieved_docs, top_n=15):
         ]
         filtered.sort(key=lambda x: x["rerank_score"], reverse=True)
 
+        print(f"⏱️ RERANKING DURATION: {time.perf_counter() - start_rerank:.2f}s")
         return filtered[:top_n]
     
     except Exception as e:

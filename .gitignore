@@ -7,9 +7,14 @@ Thumbs.db
 # --- Environnement & Secrets (CRITIQUE) ---
 .env
 *.env
-.venv/
-env/
+# --- Dépendances ---
+
+
+backend-python/venv/
+**/venv/
 node_modules/
+**/node_modules/
+
 
 # --- Docker & DB ---
 qdrant_data/

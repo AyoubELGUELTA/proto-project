@@ -23,7 +23,7 @@ exports.sendToPythonForPdfIngestion = async (file) => {
 };
 
 /* Interroge le moteur RAG pour obtenir une réponse basée sur les documents indexés */
-exports.queryRAG = async (question, limit = 15) => {
+exports.queryRAG = async (question, limit = 20) => {
     try {
         const response = await axios.get(`${FASTAPI_URL}/query`, {
             params: {

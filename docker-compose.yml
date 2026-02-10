@@ -49,7 +49,7 @@ services:
       - ./backend-node:/app
       - /app/node_modules
     depends_on:
-      - fastapi
+      - qdrant
       - postgres
     restart: unless-stopped
 
