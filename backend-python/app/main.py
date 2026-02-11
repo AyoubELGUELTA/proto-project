@@ -62,107 +62,84 @@ async def list_documents():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/ingest_pdf")
-async def ingest_pdf(file: UploadFile = File(...), config_id: str = "01"):
+@app.post("/ingest-bulk")
+async def ingest_bulk(files: List[UploadFile] = File(...), config_id: str = "01"):
     """
-    Upload d'un PDF et ingestion complète dans la base avec support Benchmark.
+    Route pour uploader et ingérer plusieurs PDFs à la fois.
+    Utilise la configuration de benchmark spécifiée pour l'ensemble du lot.
     """
-    try:
-        print(f"🔥 INGEST_PDF ROUTE EXECUTED - Config: {config_id} 🔥")
-        start_time = time.perf_counter()
+    overall_start = time.perf_counter()
+    results = []
 
-        # 0. Récupération de la config de benchmark pour l'ingestion [cite: 2026-02-10]
-        config = get_ingest_benchmark_config(config_id)
-        # On définit la taille cible des tokens selon la config (ex: 1000, 1500, 2500) [cite: 2026-02-10]
-        target_tokens = config["chunk_size"] if config["chunk_size"] else None
+    print(f"📦 BULK INGESTION STARTED - {len(files)} files with Config: {config_id}")
 
-        # creation of a unique document id
-        doc_uuid = await get_or_create_document(file.filename)
-        file_path = os.path.join(UPLOAD_DIR, f"{doc_uuid}.pdf")
+    for file in files:
+        try:
+            # On appelle directement la logique de ingest_pdf pour chaque fichier
+            # Note : on réutilise la logique interne pour garder la cohérence
+            file_result = await ingest_single_file(file, config_id)
+            results.append(file_result)
+        except Exception as e:
+            print(f"❌ Error ingesting {file.filename}: {e}")
+            results.append({
+                "filename": file.filename,
+                "status": "error",
+                "detail": str(e)
+            })
+        finally:
+            # Nettoyage agressif entre chaque fichier pour libérer la RAM du Mac [cite: 2026-01-08]
+            gc.collect()
 
-        async with aiofiles.open(file_path, "wb") as out_file:
-            content = await file.read()
-            await out_file.write(content)
+    duration = round(time.perf_counter() - overall_start, 2)
+    return {
+        "overall_status": "completed",
+        "total_files": len(files),
+        "total_duration": duration,
+        "results": results
+    }
 
-        #  Partition of PDF
-        t0 = time.perf_counter()
-        doc = partition_document(file_path)
-        t1 = time.perf_counter()
-        print("🔥 PDF PARTIIONNED 🔥")
+async def ingest_single_file(file: UploadFile, config_id: str):
+    """
+    Version interne de la logique d'ingestion (extraite de ta route ingest_pdf)
+    """
+    start_time = time.perf_counter()
+    config = get_ingest_benchmark_config(config_id)
+    target_tokens = config["chunk_size"]
 
-        #  Chunking : Utilisation de la taille dynamique 
-        chunks = create_chunks(doc, max_tokens=target_tokens)
-        t2 = time.perf_counter()
-        print(f"🔥 Chunks done, 📄 {len(chunks)} chunks créés avec target: {target_tokens}🔥")
+    doc_uuid = await get_or_create_document(file.filename)
+    file_path = os.path.join(UPLOAD_DIR, f"{doc_uuid}.pdf")
 
-        # Fiche identité
-        print("\n🔄 Création de la fiche identité du document...")
-        identity_data = await create_identity_chunk(
-            doc=doc,
-            doc_id=doc_uuid,
-            doc_title=file.filename
-        )
-        
-        await store_identity_chunk(
-            doc_id=doc_uuid,
-            identity_text=identity_data["identity_text"],
-            pages_sampled=identity_data.get("pages_sampled", [])
-        )
-        print(f"✅ Fiche identité créée : {identity_data['token_count']} tokens")
-        
-        # Enrichissement et Split final
-        enriched_chunks_raw = process_enriched_chunks(doc, chunks)          
-        enriched_chunks = split_enriched_chunks(enriched_chunks_raw, max_tokens=target_tokens)
+    # Écriture asynchrone [cite: 2026-02-11]
+    async with aiofiles.open(file_path, "wb") as out_file:
+        content = await file.read()
+        await out_file.write(content)
 
-        print(f"📊 Après découpage : {len(enriched_chunks)} chunks finaux prêts pour stockage.")
-        chunk_ids = await store_chunks_batch(enriched_chunks, doc_uuid)
-        t3 = time.perf_counter()
-        print("🔥 Chunks stored 🔥")
+    # Pipeline Ingestion (Partition -> Chunk -> Identity -> Store)
+    doc = partition_document(file_path)
+    chunks = create_chunks(doc, max_tokens=target_tokens)
+    
+    identity_data = await create_identity_chunk(doc=doc, doc_id=doc_uuid, doc_title=file.filename)
+    print(f"✅ Fiche identité créée du fichier '{file.filename}'.")
+    await store_identity_chunk(doc_id=doc_uuid, identity_text=identity_data["identity_text"], pages_sampled=identity_data.get("pages_sampled", []))
+    
+    enriched_chunks_raw = process_enriched_chunks(doc, chunks)          
+    enriched_chunks = split_enriched_chunks(enriched_chunks_raw, max_tokens=target_tokens)
+    
+    chunk_ids = await store_chunks_batch(enriched_chunks, doc_uuid)
+    summarised_chunks = await summarise_chunks(enriched_chunks, chunk_ids)
+    vectorised_chunks = await vectorize_documents(summarised_chunks) 
+    
+    await store_vectors_incrementally(vectorized_docs=vectorised_chunks, collection_name="dev_collection")
+    print(f"✅ Vecteurs storés du fichier '{file.filename}'.")
 
-        # Summarization, Vectorization et Qdrant
-        summarised_chunks = await summarise_chunks(enriched_chunks, chunk_ids)
-        print("🔥 Chunks summarized 🔥")
-        
-        vectorised_chunks = await vectorize_documents(summarised_chunks) 
-        t4 = time.perf_counter()
-        print("🔥 Chunks vectorized 🔥")
 
-        # Stockage dans la collection dédiée au benchmark [cite: 2026-02-10]
-        collection_name = f"dev_collection"
-        await store_vectors_incrementally(
-            vectorized_docs=vectorised_chunks,
-            collection_name=collection_name
-        )
-        print(f"🔥 vectored chunks stored 🔥")
-
-        end_time = time.perf_counter()
-        duration = round(end_time - start_time, 2)
-
-        # Nettoyage
-        del doc, chunks, enriched_chunks, summarised_chunks
-        gc.collect()
-
-        return {
-            "status": "success",
-            "doc_id": doc_uuid,
-            "config_id": config_id,
-            "collection": collection_name,
-            "filename": file.filename if file.filename else "unknown_file",
-            "chunks_stored": len(chunk_ids),
-            "timings": {
-                "partition": round(t1 - t0, 2),
-                "chunking": round(t2 - t1, 2),
-                "storage_postgres": round(t3 - t2, 2), 
-                "vectorize": round(t4 - t3, 2),
-                "qdrant": round(end_time - t4, 2),
-                "total": duration
-            }
-        }
-
-    except Exception as e:
-        print(f"❌ Erreur Ingestion: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+    return {
+        "status": "success",
+        "doc_id": doc_uuid,
+        "filename": file.filename,
+        "chunks_count": len(chunk_ids),
+        "duration": round(time.perf_counter() - start_time, 2)
+    }
 chat_history = []
 
 @app.get("/query")

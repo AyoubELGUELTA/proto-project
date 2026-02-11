@@ -18,7 +18,7 @@ const upload = multer({
 const auth = require('../middlewares/auth');
 
 // Route : POST /api/pdf/ingest
-router.post('/ingest', auth, upload.single('file'), ingestController.processPdfUpload);
+router.post('/ingest', auth, upload.array('files', 20), ingestController.processPdfUpload);
 
 router.get('/query', auth, queryController.askQuestion);
 

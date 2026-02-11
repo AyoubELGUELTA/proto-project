@@ -4,22 +4,32 @@ const FormData = require('form-data');
 const FASTAPI_URL = process.env.FASTAPI_URL || 'http://fastapi_rag:8000';
 
 /* Envoie un fichier PDF au moteur RAG Python pour traitement et stockage vectoriel.*/
-exports.sendToPythonForPdfIngestion = async (file) => {
-    
-    const form = new FormData();
-    // On repasse le fichier reçu à FastAPI
-    form.append('file', file.buffer, {
-        filename: file.originalname,
-        contentType: file.mimetype,
-    });
+exports.sendBulkToPythonForIngestion = async (files, config_id = "01") => {
+    try {
+        const form = new FormData();
+        
+        // On boucle sur le tableau de fichiers (venant de multer)
+        files.forEach((file) => {
+            // Important : on utilise la clé 'files' (au pluriel) pour correspondre à l'argument FastAPI
+            form.append('files', file.buffer, {
+                filename: file.originalname,
+                contentType: file.mimetype,
+            });
+        });
 
-    const response = await axios.post(`${FASTAPI_URL}/ingest_pdf`, 
-        form, 
-        {headers: { ...form.getHeaders() },
-        timeout: 10000000 // 5 minutes pour les gros PDF
+        // On ajoute le paramètre de configuration pour le benchmark
+        form.append('config_id', config_id);
 
-    });
-    return response.data;
+        const response = await axios.post(`${FASTAPI_URL}/ingest-bulk`, form, {
+            headers: { ...form.getHeaders() },
+            timeout: 1000000 //16m 40s
+        });
+
+        return response.data;
+    } catch (error) {
+        console.error("❌ Node Gateway Bulk Error:", error.message);
+        throw new Error(error.response?.data?.detail || error.message);
+    }
 };
 
 /* Interroge le moteur RAG pour obtenir une réponse basée sur les documents indexés */
@@ -30,7 +40,7 @@ exports.queryRAG = async (question, limit = 20) => {
                 question: question,
                 limit: limit
             },
-            timeout: 60000 // 1 minute suffit généralement pour une génération de réponse
+            timeout: 90000 // 1m 30
         });
         return response.data;
     } catch (error) {

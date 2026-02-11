@@ -1,23 +1,36 @@
 const pythonService = require('../services/pythonApiService');
 
+const pythonService = require('../services/pythonApiService');
+
 exports.processPdfUpload = async (req, res) => {
     try {
-        if (!req.file) {
+        // 1. Adaptation pour gérer req.file (single) ou req.files (multiple)
+        const files = req.files || (req.file ? [req.file] : null);
+        const config_id = req.body.config_id || "01"; // Récupère la config pour le benchmark
+
+        if (!files || files.length === 0) {
             return res.status(400).json({ error: "Aucun fichier PDF fourni." });
         }
-        console.log("Fichier reçu :", req.file); // DEBUG
-        // Vérification rapide du type MIME pour la sécurité
-        if (req.file.mimetype !== 'application/pdf') {
-            return res.status(400).json({ error: "Le fichier doit être un PDF." });
+
+        console.log(`[Node] Réception de ${files.length} fichier(s). Config: ${config_id}`);
+
+        // 2. Validation rapide du type MIME pour chaque fichier [cite: 2026-02-11]
+        const invalidFiles = files.filter(f => f.mimetype !== 'application/pdf');
+        if (invalidFiles.length > 0) {
+            return res.status(400).json({ 
+                error: "Certains fichiers ne sont pas des PDFs.",
+                invalid: invalidFiles.map(f => f.originalname)
+            });
         }
 
-        console.log(`[Node] Envoi du PDF ${req.file.originalname} vers FastAPI pour le garder en BDD...`);
+        console.log(`[Node] Envoi en masse vers FastAPI (Bulk Ingestion)...`);
         
-        const result = await pythonService.sendToPythonForPdfIngestion(req.file);
+        // 3. Appel au service mis à jour [cite: 2026-02-11]
+        const result = await pythonService.sendBulkToPythonForIngestion(files, config_id);
         
         res.status(200).json({
             status: "success",
-            message: "Le PDF a été traité, indexé et digéré.",
+            message: `${files.length} PDF(s) traité(s), indexé(s) et digéré(s).`,
             data: result
         });
     } catch (error) {
