@@ -1,7 +1,5 @@
 const pythonService = require('../services/pythonApiService');
 
-const pythonService = require('../services/pythonApiService');
-
 exports.processPdfUpload = async (req, res) => {
     try {
         // 1. Adaptation pour gérer req.file (single) ou req.files (multiple)

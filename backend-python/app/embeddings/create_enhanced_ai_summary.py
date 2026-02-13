@@ -6,9 +6,14 @@ from langchain_core.messages import HumanMessage
 from typing import List, Dict, Any, cast
 from .normalize_llm_response import normalize_llm_content  # to stringify the llm response
 
-async def create_ai_enhanced_summary(text: str, tables: list[str], images: list[str]) -> Tuple[str, str]:
+async def create_ai_enhanced_summary(text: str, 
+                                     tables: list[str], 
+                                     images: list[str], 
+                                     heading:str, 
+                                     is_continuation: bool = False,
+                                     is_cut: bool = False) -> Tuple[str, str]:
     if not images and not tables:
-        return text, ""
+        return f"---{heading}--- \n {text}", ""
 
     try:
         api_key = os.getenv("OPENAI_API_KEY")
@@ -22,6 +27,11 @@ async def create_ai_enhanced_summary(text: str, tables: list[str], images: list[
         )
 
         # STRICT, NON-EXPANSIVE PROMPT
+        context_note = ""
+        if is_continuation:
+            context_note += "⚠️ Ce chunk est la SUITE d'un tableau. Utilise le titre pour maintenir la cohérence des colonnes.\n"
+        if is_cut:
+            context_note += "⚠️ Ce tableau est COUPÉ à la fin de ce chunk.\n"
 
         prompt_text  = f"""
         Tu es un extracteur de données factuelles pour indexation sémantique (RAG).
@@ -44,7 +54,10 @@ async def create_ai_enhanced_summary(text: str, tables: list[str], images: list[
         - Fait visuel/tabulaire 1
         - Fait visuel/tabulaire 2
         
-        TEXTE DE RÉFÉRENCE :
+        {context_note}
+
+        Titre du chunk (docling) : {heading}
+        Contenu textuelle:
         {text}
         """
         full_prompt = prompt_text

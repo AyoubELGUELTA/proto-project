@@ -4,7 +4,7 @@ from docling.chunking import HybridChunker
 from docling_core.transforms.chunker.tokenizer.huggingface import HuggingFaceTokenizer 
 from transformers import AutoTokenizer
 from docling_core.transforms.chunker.hierarchical_chunker import ChunkingSerializerProvider, ChunkingDocSerializer
-from docling_core.transforms.serializer.markdown import MarkdownPictureSerializer
+from docling_core.transforms.serializer.markdown import MarkdownPictureSerializer, MarkdownTableSerializer
 import base64
 import io
 
@@ -15,6 +15,7 @@ class ImgAnnotationSerializerProvider(ChunkingSerializerProvider):
     def get_serializer(self, doc):
         return ChunkingDocSerializer(
             doc=doc,
+            table_serializer=MarkdownTableSerializer(),
             picture_serializer=MarkdownPictureSerializer(),
         )
     
@@ -35,11 +36,11 @@ def get_chunker(max_tokens: int = 1100):
         enforce_max_tokens=True
     )
 
-def create_chunks(doc, max_tokens: int = 1100):
+def create_chunks(doc, max_tokens: int = 1200):
     """
     Découpe le document en respectant la hiérarchie (Layout-Aware).
     """
-    chunker = get_chunker(max_tokens = 1100)
+    chunker = get_chunker(max_tokens=max_tokens)
     
     try:
         chunks = list(chunker.chunk(doc))

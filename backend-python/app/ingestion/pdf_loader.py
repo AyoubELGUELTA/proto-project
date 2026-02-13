@@ -59,6 +59,7 @@ def get_docling_converter(file_path: str):
     
     # Tableaux : extraction et conversion en Markdown
     pipeline_options.do_table_structure = True
+    pipeline_options.table_structure_options.mode = "accurate"
     
     # OCR : activé uniquement si PDF scanné
     pipeline_options.do_ocr = needs_ocr

@@ -61,11 +61,11 @@ def get_ingest_benchmark_config(config_id: str):
     """
     configs = {
         # Tests basés sur la structure automatique de Docling
-        "01": {"mode": "docling_auto", "chunk_size": None, "overlap": None},
-        "02": {"mode": "docling_auto", "chunk_size": None, "overlap": None},
-        "03": {"mode": "docling_auto", "chunk_size": None, "overlap": None},
-        "08": {"mode": "docling_auto", "chunk_size": None, "overlap": None},
-        "07": {"mode": "docling_auto", "chunk_size": None, "overlap": None},
+        "01": {"mode": "docling_auto", "chunk_size": 3750, "overlap": 250},
+        "02": {"mode": "docling_auto", "chunk_size": 3750, "overlap": 250},
+        "03": {"mode": "docling_auto", "chunk_size": 3750, "overlap": 250},
+        "08": {"mode": "docling_auto", "chunk_size": 3750, "overlap": 250},
+        "07": {"mode": "docling_auto", "chunk_size": 3750, "overlap": 250},
 
         
         # Tests basés sur le découpage récursif (RecursiveCharacterTextSplitter)

@@ -105,6 +105,7 @@ async def ingest_single_file(file: UploadFile, config_id: str):
     start_time = time.perf_counter()
     config = get_ingest_benchmark_config(config_id)
     target_tokens = config["chunk_size"]
+    overlap = config["overlap"]
 
     doc_uuid = await get_or_create_document(file.filename)
     file_path = os.path.join(UPLOAD_DIR, f"{doc_uuid}.pdf")
@@ -117,13 +118,34 @@ async def ingest_single_file(file: UploadFile, config_id: str):
     # Pipeline Ingestion (Partition -> Chunk -> Identity -> Store)
     doc = partition_document(file_path)
     chunks = create_chunks(doc, max_tokens=target_tokens)
+
+    # --- DEBUG SECTION --- [cite: 2026-02-12]
+    print(f"🔍 DEBUG CHUNKING ({file.filename}):")
+    for i, chunk in enumerate(chunks[:5]): # On regarde les 5 premiers
+        # 1. Voir si Docling a bien rattaché des items de type Table
+        table_items = [item for item in chunk.meta.doc_items if "Table" in str(type(item))]
+        print(f"  📄 Chunk {i} | Longueur texte: {len(chunk.text)} | Items Table: {len(table_items)}")
+        
+        # 2. Vérifier si le texte du chunk contient des marqueurs Markdown (| ou -)
+        has_pipe = "|" in chunk.text
+        print(f"     Structure Table détectée dans le texte: {'OUI ✅' if has_pipe else 'NON ❌'}")
+        
+        # 3. Tester l'export manuel pour voir si la donnée existe encore
+        if table_items:
+            try:
+                # On teste l'export du premier item table trouvé pour voir s'il est vide
+                md_preview = table_items[0].export_to_markdown()
+                print(f"     Aperçu Export Table (20 chars): {md_preview[:20]}...")
+            except Exception as e:
+                print(f"     ⚠️ Échec export_to_markdown: {e}")
+    # ---------------------
     
     identity_data = await create_identity_chunk(doc=doc, doc_id=doc_uuid, doc_title=file.filename)
     print(f"✅ Fiche identité créée du fichier '{file.filename}'.")
     await store_identity_chunk(doc_id=doc_uuid, identity_text=identity_data["identity_text"], pages_sampled=identity_data.get("pages_sampled", []))
     
     enriched_chunks_raw = process_enriched_chunks(doc, chunks)          
-    enriched_chunks = split_enriched_chunks(enriched_chunks_raw, max_tokens=target_tokens)
+    enriched_chunks = split_enriched_chunks(enriched_chunks_raw, max_tokens=target_tokens, overlap=overlap)
     
     chunk_ids = await store_chunks_batch(enriched_chunks, doc_uuid)
     summarised_chunks = await summarise_chunks(enriched_chunks, chunk_ids)
@@ -143,7 +165,7 @@ async def ingest_single_file(file: UploadFile, config_id: str):
 chat_history = []
 
 @app.get("/query")
-async def query_rag(question: str, limit: int = 20, config_id: str = None):
+async def query_rag(question: str, limit: int = 20, config_id: str = "01"):
     global chat_history
 
     try:

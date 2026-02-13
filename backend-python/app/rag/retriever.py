@@ -74,7 +74,7 @@ async def fetch_chunks_by_ids(chunk_ids):
     finally:
         await release_connection(conn)
 
-async def retrieve_chunks(query_data, doc_id=None, limit=20):
+async def retrieve_chunks(query_data, rerank_limit=20 , doc_id=None, limit=50):
     """
     Orchestre la recherche Hybride Turbo :
     1. Lancement simultané de l'Embedding (CPU) et des Mots-clés (Qdrant).
@@ -99,7 +99,7 @@ async def retrieve_chunks(query_data, doc_id=None, limit=20):
     # 2. Recherches Qdrant en parallèle
     # On pourrait ici avoir plusieurs vecteurs si on avait fait du Multi-Query
     search_tasks = [
-        asyncio.create_task(search_vector_only(vec, doc_id=doc_id, limit=limit+10)) 
+        asyncio.create_task(search_vector_only(vec, doc_id=doc_id, limit=limit)) 
         for vec in vectors
     ]
     all_vector_results = await asyncio.gather(*search_tasks)
@@ -115,14 +115,14 @@ async def retrieve_chunks(query_data, doc_id=None, limit=20):
     combined_ids_sorted = compute_rrf(all_rankings)
     
     # PHASE 4 : Fetch & Rerank
-    top_ids = combined_ids_sorted[:limit * 2]
+    top_ids = combined_ids_sorted[:limit]
     chunks_from_db = await fetch_chunks_by_ids(top_ids)
     
     reranked_chunks = await asyncio.to_thread(
         rerank_results, 
         query_data["vector_query"], # On rerank toujours sur la query originale
         chunks_from_db, 
-        limit
+        top_n=rerank_limit
     )
 
     return await finalize_context(reranked_chunks)

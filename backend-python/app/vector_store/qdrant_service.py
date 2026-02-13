@@ -86,20 +86,15 @@ async def keyword_search(keywords_input, collection_name="dev_collection", limit
     client = get_qdrant_client()
 
     if isinstance(keywords_input, list):
-        keywords_raw = " ".join(keywords_input)
+        query_text = " ".join(keywords_input)
     else:
-        keywords_raw = str(keywords_input)
+        query_text = str(keywords_input)
 
-    # Nettoyage des caractères de structure
-    keywords_cleaned = keywords_raw.replace("[", "").replace("]", "").replace(",", " ").strip()
+    # Nettoyage minimal
+    query_text = query_text.replace("[", "").replace("]", "").replace(",", " ").strip()
     
-    # On éclate en liste de mots individuels
-    word_list = [w.strip() for w in keywords_cleaned.split() if len(w.strip()) > 1]
-    
-    if not word_list:
-        return []
 
-    print(f"🔎 DEBUG Keyword Search - Mots éclatés pour Qdrant: {word_list}")
+    print(f"🔎 DEBUG Keyword Search - Mots éclatés pour Qdrant: {query_text}")
 
     results = await client.query_points(
         collection_name=collection_name,
@@ -108,8 +103,8 @@ async def keyword_search(keywords_input, collection_name="dev_collection", limit
             should=[ # "OR" sémantique
                 models.FieldCondition(
                     key="page_content", 
-                    match=models.MatchText(text=word)
-                ) for word in word_list
+                    match=models.MatchText(text=query_text)
+                ) 
             ]
         ),
         limit=limit

@@ -22,7 +22,7 @@ exports.sendBulkToPythonForIngestion = async (files, config_id = "01") => {
 
         const response = await axios.post(`${FASTAPI_URL}/ingest-bulk`, form, {
             headers: { ...form.getHeaders() },
-            timeout: 1000000 //16m 40s
+            timeout: 10000000 // ~2h30min
         });
 
         return response.data;

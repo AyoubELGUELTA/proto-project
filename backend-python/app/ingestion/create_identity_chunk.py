@@ -27,13 +27,13 @@ async def create_identity_chunk(
     print(f"🔄 Création de la fiche identité pour {doc_title or doc_id}...")
     
     # 1. Extraire le sommaire/table des matières
-    toc = extract_table_of_contents(doc) #table of contents
+    toc_data = extract_table_of_contents(doc) #table of contents
     
     # 2. Échantillonner le document : 6 premières + 6 milieu + 6 fin
     sampled_text = sample_document_pages(doc)
     
     # 3. Construire le prompt pour GPT-4o-mini
-    prompt = build_identity_prompt(doc_title, toc, sampled_text)
+    prompt = build_identity_prompt(doc_title, toc_data, sampled_text)
 
 
     
@@ -63,7 +63,7 @@ async def create_identity_chunk(
     except Exception as e:
         print(f"❌ Erreur lors de la création de la fiche identité : {e}")
         # Fallback : créer une fiche minimale
-        return create_fallback_identity(doc_title, toc)
+        return create_fallback_identity(doc_title, toc_data["content"])
     
 def create_fallback_identity(doc_title: Optional[str], toc: str) -> Dict[str, Any]:
     # On force un nettoyage du sommaire pour s'assurer qu'il y a des retours à la ligne
@@ -90,58 +90,68 @@ def create_fallback_identity(doc_title: Optional[str], toc: str) -> Dict[str, An
 
 def extract_table_of_contents(doc: DoclingDocument) -> str:
     """
-    Extrait le sommaire du document.
-    
-    L'API Docling utilise doc.iterate_items() ou doc.export_to_markdown()
+    Extrait le sommaire du document, qu'il soit au début ou à la fin.
     """
-    toc_text = ""
     try:
-        # Stratégie 1 : Utiliser export_to_markdown pour avoir la structure
-        # (Docling génère automatiquement les headings en Markdown)
         markdown = doc.export_to_markdown()
-        
-        # Extraire les lignes qui commencent par # (headings)
         lines = markdown.split('\n')
-        headings = []
+        total_lines = len(lines)
         
-        for line in lines[:100]:  # Limiter aux 100 premières lignes
-            stripped = line.strip()
-            if stripped.startswith('#'):
-                # Nettoyer le heading (enlever les #)
-                heading = stripped.lstrip('#').strip()
-                
-                # Filtrer les headings trop longs (probablement pas un titre)
-                if heading and len(heading) < 100:
-                    # Détecter si c'est un sommaire
-                    if 'sommaire' in heading.lower() or 'table des matières' in heading.lower():
-                        # Extraire les 20 prochaines lignes après "Sommaire"
-                        idx = lines.index(line)
-                        toc_lines = lines[idx:idx+25]
-                        toc_text = "\n".join([l.strip() for l in toc_lines if l.strip()])
-                        return toc_text
+        # 1. Définir les zones de recherche (Début et Fin)
+        # On prend les 200 premières et 200 dernières lignes
+        search_limit = 200
+        start_chunk = lines[:search_limit]
+        end_chunk = lines[-search_limit:] if total_lines > search_limit else []
+        
+        # On combine pour la recherche de mots-clés
+        search_zones = [
+            ("DÉBUT", start_chunk),
+            ("FIN", end_chunk)
+        ]
+        
+        keywords = ['sommaire', 'table des matières', 'table of contents', 'plan du document']
+
+        for zone_name, zone_lines in search_zones:
+            for i, line in enumerate(zone_lines):
+                stripped = line.strip()
+                if any(kw in stripped.lower() for kw in keywords):
+                    start_idx = i
+                    end_idx = i + 50
+                    toc_lines = zone_lines[start_idx:end_idx]
                     
-                    headings.append(heading)
-        
-        # Stratégie 2 : Si pas de sommaire explicite, retourner les headings trouvés
-        if headings:
-            toc_text = "\n".join(headings)
-            return toc_text
-        
-        # Stratégie 3 : Fallback - Itérer sur les items du document
-        if not toc_text and hasattr(doc, 'body') and hasattr(doc.body, 'children'):
-            for item in doc.body.children[:50]:
-                if hasattr(item, 'label') and 'heading' in str(item.label).lower():
-                    text = getattr(item, 'text', '').strip()
-                    if text and len(text) < 100:
-                        headings.append(text)
+                    print(f"📍 Sommaire détecté dans la zone : {zone_name}")
+                    
+                    # --- MODIFICATION ICI : RETOUR STRUCTURED ---
+                    return {
+                        "type": "OFFICIEL",
+                        "content": "\n".join([l.strip() for l in toc_lines if l.strip()]),
+                        "label": "TABLE DES MATIÈRES"
+                    }
+
+        # 2. Fallback : Si aucun mot-clé n'est trouvé, on récupère tous les titres (Headings)
+        # Mais on se limite à un nombre raisonnable pour la fiche d'identité
+        headings = []
+        for item in doc.iterate_items():
+            # Docling marque les titres avec le label 'heading'
+            if item.label == 'heading':
+                text = item.text.strip()
+                if text and len(text) < 120:
+                    headings.append(text)
             
-            if headings:
-                toc_text = "\n".join(headings)
+            if len(headings) > 60: # Sécurité pour ne pas saturer le prompt
+                break
+                
+        if headings:
+            return {
+                "type": "ESTIMÉ", 
+                "content": "\n".join(headings), 
+                "label": "STRUCTURE DÉTECTÉE (Titres principaux)"
+            }
 
     except Exception as e:
         print(f"⚠️ Erreur extraction sommaire : {e}")
 
-    return toc_text or "Sommaire non détecté"
+    return {"type": "ABSENT", "content": "Non détecté", "label": "STRUCTURE INCONNUE"}
 
 def sample_document_pages(doc: DoclingDocument, max_chars: int = 10000) -> Dict[str, Any]:
     try:
@@ -179,7 +189,7 @@ def sample_document_pages(doc: DoclingDocument, max_chars: int = 10000) -> Dict[
 
 def build_identity_prompt(
     doc_title: Optional[str], 
-    toc: str, 
+    toc_data: str, 
     sampled_text_data: Dict[str, Any]
 ) -> str:
     """
@@ -187,6 +197,15 @@ def build_identity_prompt(
     """
     sampled_text = sampled_text_data.get("text", "")
     pages_used = sampled_text_data.get("pages_used", [])
+
+    toc_type = toc_data.get('type')
+    toc_content = toc_data.get('content')
+
+    context_instruction = ""
+    if toc_type == "OFFICIEL":
+        context_instruction = "Utilise le sommaire officiel suivant pour comprendre l'organisation exacte du document."
+    else:
+        context_instruction = "Attention : Aucun sommaire officiel n'a été trouvé. Voici une liste de titres extraits du corps du texte pour te donner une idée de la structure."
     
     return f"""
 Tu es un assistant spécialisé dans la création de FICHES IDENTITÉ ultra-condensées pour des documents religieux et/ou éducatifs.
@@ -195,8 +214,8 @@ DOCUMENT ANALYSÉ:
 Titre: {doc_title or "Non spécifié"}
 Pages échantillonnées: {pages_used}
 
-TABLE DES MATIÈRES:
-{toc}
+STRUCTURE FOURNIE ({toc_data.get('label')}) :
+    {toc_content}
 
 EXTRAITS DU DOCUMENT:
 {sampled_text}
@@ -204,6 +223,7 @@ EXTRAITS DU DOCUMENT:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TÂCHE: Crée une FICHE IDENTITÉ ultra-condensée (MAX 400 mots).
 TU DOIS IMPÉRATIVEMENT UTILISER DES RETOURS À LA LIGNE ENTRE CHAQUE ÉLÉMENT.
+{context_instruction}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 FORMAT STRICT À RESPECTER :
@@ -216,8 +236,8 @@ FORMAT STRICT À RESPECTER :
 📖 TYPE: [biographie / cours / essai / etc.]
 🎯 SUJET: [résumé en 2,3 phrases de quoi parle le document]
 
-STRUCTURE DU DOCUMENT (SOMMAIRE) :
-(Chaque chapitre DOIT être sur une nouvelle ligne avec un tiret)
+STRUCTURE DU DOCUMENT (SOMMAIRE/LISTE DES TITRES) :
+(Chaque chapitre/titre DOIT être sur une nouvelle ligne avec un tiret)
 - 1. [Nom Chapitre] (p.[numéro])
 - 2. [Nom Chapitre] (p.[numéro])
 ...
@@ -229,7 +249,7 @@ STRUCTURE DU DOCUMENT (SOMMAIRE) :
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 RÈGLES D'OR DE MISE EN PAGE :
-1. INTERDICTION FORMELLE de faire des paragraphes de texte compacts pour le sommaire. 
+1. INTERDICTION FORMELLE de faire des paragraphes de texte compacts pour le sommaire/. 
 2. UN CHAPITRE = UNE LIGNE. C'est crucial pour la distinction sémantique.
 3. Ne mélange jamais les noms de personnes ou de sections sur la même ligne.
 4. Les numéros de page sont ESSENTIELS.
@@ -238,11 +258,6 @@ RÈGLES D'OR DE MISE EN PAGE :
 COMMENCE DIRECTEMENT PAR "━━━━━..." (pas de préambule).
 """.strip()
     
-    return {
-        "identity_text": identity_text,
-        "token_count": len(identity_text.split()) * 1.3,  # Approximation
-        "pages_sampled": []
-    }
 
 
 # Helper function (déjà définie dans separate_content_types.py mais répétée ici pour clarté)

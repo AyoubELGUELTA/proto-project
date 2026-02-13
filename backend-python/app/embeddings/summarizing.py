@@ -11,9 +11,12 @@ async def process_single_chunk(chunk, chunk_id):
     Traite un chunk individuel avec une file d'attente (Semaphore).
     Conserve la logique originale : si pas de tables/images, on renvoie tel quel.
     """
-    text = chunk["text"]
-    tables = chunk["tables"]
-    images = chunk["images_urls"]
+    text=chunk['text']
+    tables=chunk.get('tables', [])
+    images=chunk.get('images_urls', [])
+    heading=chunk.get('heading_full', 'Sans titre')
+    is_continuation=chunk.get('is_table_continuation', False)
+    is_cut=chunk.get('is_table_cut', False)
     visual_description = "" 
 
     if tables or images:
@@ -24,7 +27,11 @@ async def process_single_chunk(chunk, chunk_id):
                 text, visual_description = await create_ai_enhanced_summary(
                     text,
                     tables,
-                    images
+                    images,
+                    heading,
+                    is_continuation,
+                    is_cut
+                    
                 )
         except Exception as e:
             print(f"⚠️ Erreur AI summary pour chunk {chunk_id}: {e}")

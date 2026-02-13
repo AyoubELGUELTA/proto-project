@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ragApi } from './api/ragClient';
 import { Send, Upload, Trash2, Loader2, User, Bot } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const SourceAccordion = ({ sources }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -86,6 +88,17 @@ const SourceAccordion = ({ sources }) => {
     </div>
   );
 };
+
+const SourceChip = ({ source }) => (
+  <div className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded text-[10px] text-gray-500 border border-gray-200">
+    <span className="font-bold text-blue-500 uppercase">
+      {source.is_identity ? 'ID' : 'P.' + (source.page_number || '?')}
+    </span>
+    <span className="truncate max-w-[80px] italic">
+      {source.heading_full || "Chunk"}
+    </span>
+  </div>
+);
 
 function App() {
   const [question, setQuestion] = useState('');
@@ -291,7 +304,19 @@ function App() {
           ? 'bg-white border border-gray-100 text-gray-800 rounded-tl-none' 
           : 'bg-blue-600 text-white rounded-tr-none'
       }`}>
-        <p className="leading-relaxed">{m.text}</p>
+        <div className="prose prose-sm max-w-none text-gray-800 leading-relaxed prose-p:leading-relaxed prose-pre:bg-gray-900 prose-pre:text-green-400">
+  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+    {m.text}
+  </ReactMarkdown>
+  
+  {/* Aperçu rapide des sources avant l'accordéon */}
+  {isAi && m.sources && (
+    <div className="flex flex-wrap gap-2 mt-3">
+      {m.sources.slice(0, 3).map((s, idx) => <SourceChip key={idx} source={s} />)}
+      {m.sources.length > 3 && <span className="text-[10px] text-gray-400">+{m.sources.length - 3}</span>}
+    </div>
+  )}
+</div>
         
         {isAi && m.sources && m.sources.length > 0 && (
           <SourceAccordion sources={m.sources} />
