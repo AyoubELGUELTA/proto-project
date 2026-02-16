@@ -88,70 +88,81 @@ def create_fallback_identity(doc_title: Optional[str], toc: str) -> Dict[str, An
     """.strip()
     return {"identity_text": identity_text, "token_count": 0}
 
-def extract_table_of_contents(doc: DoclingDocument) -> str:
+def extract_table_of_contents(doc: DoclingDocument) -> Dict[str, str]:
     """
-    Extrait le sommaire du document, qu'il soit au début ou à la fin.
+    Extrait le sommaire du document de manière robuste.
+    Retourne TOUJOURS un dictionnaire avec 'type', 'content', 'label'.
     """
     try:
+        # 1. Tentative par Markdown (Recherche explicite de "Sommaire")
         markdown = doc.export_to_markdown()
         lines = markdown.split('\n')
-        total_lines = len(lines)
         
-        # 1. Définir les zones de recherche (Début et Fin)
-        # On prend les 200 premières et 200 dernières lignes
-        search_limit = 200
-        start_chunk = lines[:search_limit]
-        end_chunk = lines[-search_limit:] if total_lines > search_limit else []
-        
-        # On combine pour la recherche de mots-clés
+        # On cherche dans les 200 premières lignes (début) et 200 dernières (fin)
         search_zones = [
-            ("DÉBUT", start_chunk),
-            ("FIN", end_chunk)
+            ("DÉBUT", lines[:200]),
+            ("FIN", lines[-200:] if len(lines) > 200 else [])
         ]
         
-        keywords = ['sommaire', 'table des matières', 'table of contents', 'plan du document']
+        keywords = ['sommaire', 'table des matières', 'table of contents', 'plan du document', 'contenu']
 
         for zone_name, zone_lines in search_zones:
             for i, line in enumerate(zone_lines):
-                stripped = line.strip()
-                if any(kw in stripped.lower() for kw in keywords):
-                    start_idx = i
-                    end_idx = i + 50
+                stripped = line.strip().lower()
+                # On vérifie si la ligne contient un mot clé ET fait moins de 50 chars (pour éviter les faux positifs dans le texte)
+                if any(kw in stripped for kw in keywords) and len(stripped) < 50:
+                    
+                    # On prend les 50 lignes suivantes comme sommaire potentiel
+                    start_idx = i + 1 
+                    end_idx = min(i + 60, len(zone_lines))
                     toc_lines = zone_lines[start_idx:end_idx]
                     
-                    print(f"📍 Sommaire détecté dans la zone : {zone_name}")
+                    # Nettoyage basique
+                    clean_toc = [l.strip() for l in toc_lines if l.strip() and len(l) > 3]
                     
-                    # --- MODIFICATION ICI : RETOUR STRUCTURED ---
-                    return {
-                        "type": "OFFICIEL",
-                        "content": "\n".join([l.strip() for l in toc_lines if l.strip()]),
-                        "label": "TABLE DES MATIÈRES"
-                    }
+                    if len(clean_toc) > 3: # On veut au moins 3 entrées pour valider
+                        print(f"📍 Sommaire détecté dans la zone : {zone_name}")
+                        return {
+                            "type": "OFFICIEL",
+                            "content": "\n".join(clean_toc),
+                            "label": "TABLE DES MATIÈRES DÉTECTÉE"
+                        }
 
-        # 2. Fallback : Si aucun mot-clé n'est trouvé, on récupère tous les titres (Headings)
-        # Mais on se limite à un nombre raisonnable pour la fiche d'identité
+        # Fallback : Extraction des Titres (Headings) via Docling
         headings = []
-        for item in doc.iterate_items():
-            # Docling marque les titres avec le label 'heading'
-            if item.label == 'heading':
-                text = item.text.strip()
-                if text and len(text) < 120:
-                    headings.append(text)
+        
+        # Docling v2: iterate_items() retourne un générateur d'items
+        for item, _ in doc.iterate_items(): # Le _ capture le level/parent si iterate_items renvoie un tuple
+             # Si item est un tuple (ce qui arrive parfois selon la version), on prend le 1er élément
+            if isinstance(item, tuple):
+                item = item[0]
             
-            if len(headings) > 60: # Sécurité pour ne pas saturer le prompt
+            # Vérification sécurisée du label
+            # Docling utilise parfois 'heading', parfois 'section_header' selon les modèles
+            if hasattr(item, 'label') and str(item.label).lower() in ['heading', 'title', 'section_header']:
+                text = item.text.strip()
+                if text and len(text) < 150: # On évite les titres à rallonge qui sont des erreurs
+                    headings.append(f"- {text}")
+            
+            if len(headings) >= 40: # On limite à 40 titres pour le prompt
                 break
                 
         if headings:
+            print(f"📍 Structure reconstruite via {len(headings)} titres.")
             return {
                 "type": "ESTIMÉ", 
                 "content": "\n".join(headings), 
-                "label": "STRUCTURE DÉTECTÉE (Titres principaux)"
+                "label": "STRUCTURE RECONSTRUITE (TITRES)"
             }
 
     except Exception as e:
-        print(f"⚠️ Erreur extraction sommaire : {e}")
+        print(f"⚠️ Erreur non-bloquante extraction sommaire : {e}")
 
-    return {"type": "ABSENT", "content": "Non détecté", "label": "STRUCTURE INCONNUE"}
+    return {
+        "type": "ABSENT", 
+        "content": "Aucune structure détectée.", 
+        "label": "STRUCTURE INCONNUE"
+    }
 
 def sample_document_pages(doc: DoclingDocument, max_chars: int = 10000) -> Dict[str, Any]:
     try:

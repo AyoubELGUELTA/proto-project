@@ -19,7 +19,7 @@ qdrant_host = os.getenv("QDRANT_HOST", "localhost")
 qdrant_port = os.getenv("QDRANT_PORT", "6333")
 client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
 
-async def search_vector_only(query_vector, doc_id=None, collection_name="all_documents", limit=12):
+async def search_vector_only(query_vector, doc_id=None, collection_name="dev_collection", limit=12):
     """Effectue la recherche vectorielle pure (le vecteur est déjà calculé)"""
     try:
         search_result = await client.query_points(

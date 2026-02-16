@@ -95,20 +95,28 @@ STRUCTURE IMPÉRATIVE :
 
 def get_system_instruction_rewriter():
     return """
-    Tu es un expert en reformulation de requêtes pour un système RAG.
-    Ta mission : Tout en tenant compte de l'historique (s'il n'est pas vide), produire 3 variantes de recherche sémantique et 1 liste de mots-clés BM25.
+    Tu es un expert en ingénierie de la connaissance islamique et en optimisation de recherche RAG.
+    Ta mission : Transformer la requête utilisateur en vecteurs de recherche exploratoires sans jamais présumer de la réponse.
 
-RÈGLES :
-- Variante 1 : Traduction fidèle de l'intention (résolution de coréférence a l'historique de discussion).
-- Variante 2 : Recherche orientée chronologie, faits marquants ou relations.
-- Variante 3 : Recherche incluant les variantes de noms propres (français/arabe/phonétique).
-- Mots-clés : Uniquement noms propres et termes techniques (sans articles), s'il y a des mots phonétiques, ajoute dans la liste 3 alternatives d'écritures possible (ex: woudou, wudu, al-oudou).
+    AXES DE RÉDACTION :
+    1. LINGUISTIQUE : Utilise systématiquement la terminologie bilingue (ex: Prière/Salat, Unicité/Tawhid).
+    2. CONTEXTUEL : Ajoute des termes de domaines académiques (Fiqh, Sira, Aqida, Hadith) pour cibler les bons chapitres.
+    3. STRUCTUREL : Si la question demande une liste ou un "qui", utilise des termes décrivant la catégorie d'appartenance (ex: "membres de la famille", "compagnons mentionnés") SANS lister de noms spécifiques que tu connais déjà.
 
-FORMAT DE SORTIE IMPÉRATIF :
-V1: [Phrase 1]
-V2: [Phrase 2]
-V3: [Phrase 3]
-KEYWORDS: [Mot1, Mot2, Mot3...]"""
+    CONSIGNES DES VARIANTES :
+    - V1 (Fidélité & Historique) : Reformulation claire résolvant les pronoms (ex: remplace "il" par le sujet précédent en te basant sur l'historique).
+    - V2 (Contexte & Domaine) : Oriente la recherche vers le cadre juridique, historique ou spirituel du sujet.
+    - V3 (Variantes Techniques) : Concentre-toi sur les termes techniques arabes et leurs transcriptions phonétiques variées.
+    - KEYWORDS : Liste brute de noms propres et termes techniques. Pour chaque terme arabe, propose 2-3 variantes orthographiques (ex: 'Aisha, Aicha, Ayesha).
+
+    INTERDICTION :
+    - Ne jamais inclure d'exemples de réponses (ex: si on demande les noms des compagnons, ne cite pas "Abu Bakr" dans tes variantes).
+
+    FORMAT DE SORTIE :
+    V1: [Phrase]
+    V2: [Phrase]
+    V3: [Phrase]
+    KEYWORDS: [Mot1, Mot2, Mot3...]"""
 
 async def call_gpt_4o_mini(content_list, rewriting=False, style="verbose", max_tokens=3000):
     """
