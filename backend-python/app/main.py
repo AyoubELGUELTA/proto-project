@@ -6,18 +6,23 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 
-# Importation de tes modules nettoyés
+# Importation de mes modules nettoyés
+
 from .ingestion.pdf_loader import partition_document
 from .ingestion.chunker import create_chunks
 from .ingestion.create_identity_chunk import create_identity_chunk
-from .db.postgres import store_chunks_batch, get_documents, get_or_create_document, init_db, store_identity_chunk
+from db import (init_db, get_documents, get_or_create_document, store_chunks_batch, store_identity_chunk, 
+                fetch_identities_by_doc_ids, get_chunk_with_metadata, 
+                update_chunks_with_ai_data, link_entity_to_chunk, resolve_entity)
+
 from .embeddings.embedder import vectorize_documents
-from .embeddings.summarizing import summarise_chunks
 from .vector_store.qdrant_service import store_vectors_incrementally
 from .rag.retriever import retrieve_chunks
 from .rag.answer_generator import generate_answer_with_history
 from .rag.query_rewriter import rewrite_query
 from .utils.processor import process_enriched_chunks, split_enriched_chunks
+from .utils.summarize_and_extract_entities import summarise_and_extract_entities
+
 
 from .benchmark_test import get_benchmark_config_rag, get_ingest_benchmark_config
 import aiofiles 
@@ -100,67 +105,59 @@ async def ingest_bulk(files: List[UploadFile] = File(...), config_id: str = "01"
 
 async def ingest_single_file(file: UploadFile, config_id: str):
     """
-    Version interne de la logique d'ingestion (extraite de ta route ingest_pdf)
+    Pipeline d'ingestion optimisé : Partition -> Identity -> Store -> AI Enrichment & Entity Graph -> Vectorize
     """
     start_time = time.perf_counter()
     config = get_ingest_benchmark_config(config_id)
     target_tokens = config["chunk_size"]
     overlap = config["overlap"]
 
+    # 1. Gestion du document physique et BDD
     doc_uuid = await get_or_create_document(file.filename)
     file_path = os.path.join(UPLOAD_DIR, f"{doc_uuid}.pdf")
 
-    # Écriture asynchrone [cite: 2026-02-11]
     async with aiofiles.open(file_path, "wb") as out_file:
         content = await file.read()
         await out_file.write(content)
 
-    # Pipeline Ingestion (Partition -> Chunk -> Identity -> Store)
+    # 2. Parsing et Chunking initial
     doc = partition_document(file_path)
     chunks = create_chunks(doc, max_tokens=target_tokens)
-
-    # --- DEBUG SECTION --- [cite: 2026-02-12]
-    print(f"🔍 DEBUG CHUNKING ({file.filename}):")
-    for i, chunk in enumerate(chunks[:5]): # On regarde les 5 premiers
-        # 1. Voir si Docling a bien rattaché des items de type Table
-        table_items = [item for item in chunk.meta.doc_items if "Table" in str(type(item))]
-        print(f"  📄 Chunk {i} | Longueur texte: {len(chunk.text)} | Items Table: {len(table_items)}")
-        
-        # 2. Vérifier si le texte du chunk contient des marqueurs Markdown (| ou -)
-        has_pipe = "|" in chunk.text
-        print(f"     Structure Table détectée dans le texte: {'OUI ✅' if has_pipe else 'NON ❌'}")
-        
-        # 3. Tester l'export manuel pour voir si la donnée existe encore
-        if table_items:
-            try:
-                # On teste l'export du premier item table trouvé pour voir s'il est vide
-                md_preview = table_items[0].export_to_markdown()
-                print(f"     Aperçu Export Table (20 chars): {md_preview[:20]}...")
-            except Exception as e:
-                print(f"     ⚠️ Échec export_to_markdown: {e}")
-    # ---------------------
     
+    # 3. Identity Chunk (Le contexte global du document)
     identity_data = await create_identity_chunk(doc=doc, doc_id=doc_uuid, doc_title=file.filename)
-    print(f"✅ Fiche identité créée du fichier '{file.filename}'.")
-    await store_identity_chunk(doc_id=doc_uuid, identity_text=identity_data["identity_text"], pages_sampled=identity_data.get("pages_sampled", []))
+    await store_identity_chunk(
+        doc_id=doc_uuid, 
+        identity_text=identity_data["identity_text"], 
+        pages_sampled=identity_data.get("pages_sampled", [])
+    )
     
+    # 4. Enrichissement structurel (Headings, Tables, Images)
     enriched_chunks_raw = process_enriched_chunks(doc, chunks)          
     enriched_chunks = split_enriched_chunks(enriched_chunks_raw, max_tokens=target_tokens, overlap=overlap)
     
+    # 5. Stockage des chunks bruts pour obtenir les UUIDs
     chunk_ids = await store_chunks_batch(enriched_chunks, doc_uuid)
-    summarised_chunks = await summarise_chunks(enriched_chunks, chunk_ids)
-    vectorised_chunks = await vectorize_documents(summarised_chunks) 
-    
-    await store_vectors_incrementally(vectorized_docs=vectorised_chunks, collection_name="dev_collection")
-    print(f"✅ Vecteurs storés du fichier '{file.filename}'.")
 
+    # 6. IA : Synthèse visuelle ET Extraction d'entités (GraphRAG)
+    # On utilise ta nouvelle fonction groupée
+    enriched_results = await summarise_and_extract_entities(enriched_chunks, chunk_ids)
+    
+    # 7. Vectorisation (basée sur le texte enrichi par l'IA)
+    vectorised_chunks = await vectorize_documents(enriched_results) 
+    
+    # 8. Stockage Vectoriel
+    await store_vectors_incrementally(vectorized_docs=vectorised_chunks, collection_name="dev_collection")
+
+    duration = round(time.perf_counter() - start_time, 2)
+    print(f"✅ Ingestion complète de '{file.filename}' en {duration}s. ({len(chunk_ids)} chunks)")
 
     return {
         "status": "success",
         "doc_id": doc_uuid,
         "filename": file.filename,
         "chunks_count": len(chunk_ids),
-        "duration": round(time.perf_counter() - start_time, 2)
+        "duration": duration
     }
 chat_history = []
 
