@@ -9,9 +9,9 @@ const api = axios.create({
 
 export const ragApi = {
   // Upload du PDF
-  ingestPdf: (file) => {
+  ingestPdf: (files) => {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('files', files);
     return api.post('/ingest', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });

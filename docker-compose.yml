@@ -13,10 +13,9 @@ services:
   # --- PostgreSQL : DB ---
   postgres:
     container_name: postgres
-
-    image: postgres:16
+    # Utilisation de l'image officielle pgvector
+    image: pgvector/pgvector:pg16 
     env_file: .env
-     
     volumes:
       - pg_data:/var/lib/postgresql/data
     restart: unless-stopped

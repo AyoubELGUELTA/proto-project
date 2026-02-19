@@ -1,4 +1,5 @@
-from .init_db import init_db
+from .base import get_connection, release_connection 
+from .init_db import init_db, seed_system_tags
 from .documents import get_documents, get_or_create_document
 from .chunks import (
     store_chunks_batch, 

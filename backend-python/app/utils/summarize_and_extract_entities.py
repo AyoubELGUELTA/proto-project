@@ -40,33 +40,53 @@ async def process_single_chunk(chunk_data: Dict[str, Any], chunk_id: str) -> Dic
         )
 
         prompt = f"""
-        Tu es un expert en extraction de données structurées pour un Knowledge Graph.
-        
-        CONTEXTE DU CHUNK : {heading}
-        CONTENU TEXTUEL : 
-        {text}
+        Tu es un expert en extraction d'entités pour un Knowledge Graph islamique.
 
-        TA MISSION :
-        Répondre UNIQUEMENT avec un objet JSON contenant deux clés :
+        CONTEXTE : {heading}
+        TEXTE : {text}
 
-        1. "visual_summary" : 
-           - Analyse les TABLEAUX et IMAGES fournis.
-           - Extrais uniquement les informations factuelles qui ne sont PAS déjà dans le texte.
-           - Format : Une liste de faits bruts séparés par des retours à la ligne.
-           - Si rien de nouveau : renvoie "".
+        MISSION : Extrais UNIQUEMENT les entités MAJEURES :
 
-        2. "entities" :
-           - Extrais les entités (Personnes, Lieux, Concepts clés, Événements).
-           - Pour chaque entité, fournis :
-             - "name" : Nom canonique (le plus complet).
-             - "type" : Catégorie (PERSONNE, LIEU, CONCEPT, EVENEMENT).
-             - "aliases" : Liste des variantes trouvées ou connues (ex: ["Wudu", "Ablutions"]).
-             - "relevance" : Score de 0.0 à 1.0 (importance de l'entité dans ce chunk).
+        1. PERSONNES : Prophètes, Compagnons, Savants, Mères des Croyants
+        - Utilise le nom COMPLET (ex: "Aïcha bint Abi Bakr" pas juste "Aïcha")
+        - Inclus honorifiques dans aliases : ["(ra)", "(saw)"]
+
+        2. CONCEPTS RELIGIEUX : Piliers, pratiques, termes techniques
+        - Nom arabe + traduction si pertinente
+        - Ex: "Salat (Prière)", aliases: ["Salat", "Prière", "Prière rituelle"]
+
+        3. LIEUX : Villes sacrées, lieux historiques
+        - Ex: "Médine", aliases: ["Madinah", "Yathrib"]
+
+        4. ÉVÉNEMENTS : Batailles, révélations, migrations
+        - Ex: "Hijra", aliases: ["Hégire", "Migration"]
+
+        CRITÈRES DE SÉLECTION :
+        - L'entité est mentionnée substantiellement (pas juste en passant)
+        - Elle a une importance religieuse/historique
+        - IGNORE : pronoms, mots courants, entités secondaires
+
+        THÈMES CONTEXTUELS (pour aide) :
+        - Piliers de l'Islam, Jurisprudence, Histoire Prophétique, Spiritualité, etc.
+
+        FORMAT JSON :
+        {{
+        "visual_summary": "...",
+        "entities": [
+            {{
+            "name": "Aïcha bint Abi Bakr",
+            "type": "PERSONNE",
+            "aliases": ["Aisha", "Aïcha (ra)", "Mère des Croyants"],
+            "relevance": 0.9,
+            "themes": ["Mères des Croyants", "Histoire Prophétique"]
+            }}
+        ]
+        }}
 
         RÈGLES :
-        - Pas de phrases d'introduction.
-        - Si un tableau est la suite d'un autre (is_continuation: {is_continuation}), garde la cohérence.
-        - JSON STRICT UNIQUEMENT.
+        - 3-8 entités MAX par chunk (qualité > quantité)
+        - Pas de phrases, JSON pur
+        - Si aucune entité majeure : "entities": []
         """
 
         message_content = [{"type": "text", "text": prompt}]
@@ -86,7 +106,7 @@ async def process_single_chunk(chunk_data: Dict[str, Any], chunk_id: str) -> Dic
 
         response = await llm.ainvoke([HumanMessage(content=message_content)])
         raw_data = json.loads(cast(str, response.content))
-
+        print (f"RAW_DATA INGEST LLM POUR CHUNK: {chunk_id} : {raw_data}.")
         # Nettoyage du texte original (retrait des tableaux markdown si résumé présent)
         clean_text = text
         if raw_data.get("visual_summary"):
@@ -98,7 +118,8 @@ async def process_single_chunk(chunk_data: Dict[str, Any], chunk_id: str) -> Dic
             "chunk_id": chunk_id,
             "text": clean_text,
             "visual_summary": raw_data.get("visual_summary", ""),
-            "entities": raw_data.get("entities", [])
+            "entities": raw_data.get("entities", []),
+            "heading_full": heading
         }
 
     except Exception as e:

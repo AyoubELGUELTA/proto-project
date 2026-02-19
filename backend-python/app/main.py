@@ -11,16 +11,16 @@ from typing import List
 from .ingestion.pdf_loader import partition_document
 from .ingestion.chunker import create_chunks
 from .ingestion.create_identity_chunk import create_identity_chunk
-from db import (init_db, get_documents, get_or_create_document, store_chunks_batch, store_identity_chunk, 
+from .db import (init_db, seed_system_tags, get_documents, get_or_create_document, store_chunks_batch, store_identity_chunk, 
                 fetch_identities_by_doc_ids, get_chunk_with_metadata, 
-                update_chunks_with_ai_data, link_entity_to_chunk, resolve_entity)
+                update_chunks_with_ai_data, link_entity_to_chunk, resolve_entity, finalize_entity_graph)
 
 from .embeddings.embedder import vectorize_documents
 from .vector_store.qdrant_service import store_vectors_incrementally
 from .rag.retriever import retrieve_chunks
 from .rag.answer_generator import generate_answer_with_history
 from .rag.query_rewriter import rewrite_query
-from .utils.processor import process_enriched_chunks, split_enriched_chunks
+from .utils.chunks_ingest_processor import process_enriched_chunks, split_enriched_chunks
 from .utils.summarize_and_extract_entities import summarise_and_extract_entities
 
 
@@ -49,6 +49,7 @@ async def startup_event():
     print("🚀 Starting up FastAPI...")
     try:
         await init_db()
+        await seed_system_tags()
         print("✅ Database tables are ready.")
     except Exception as e:
         print(f"❌ Failed to initialize database on startup: {e}")
@@ -149,6 +150,9 @@ async def ingest_single_file(file: UploadFile, config_id: str):
     # 8. Stockage Vectoriel
     await store_vectors_incrementally(vectorized_docs=vectorised_chunks, collection_name="dev_collection")
 
+    #9. FINALISATION DU GRAPHE D'ENTITÉS (Etabli les cooccurences + les refresh/make les global summaries si + de 5 chunks)
+    graph_stats = await finalize_entity_graph(doc_uuid)
+
     duration = round(time.perf_counter() - start_time, 2)
     print(f"✅ Ingestion complète de '{file.filename}' en {duration}s. ({len(chunk_ids)} chunks)")
 
@@ -157,6 +161,8 @@ async def ingest_single_file(file: UploadFile, config_id: str):
         "doc_id": doc_uuid,
         "filename": file.filename,
         "chunks_count": len(chunk_ids),
+        "entity_relations": graph_stats['cooccurrences'],
+        "entity_summaries": graph_stats['summaries'],
         "duration": duration
     }
 chat_history = []

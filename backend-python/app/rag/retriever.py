@@ -4,7 +4,7 @@ import os
 from .reranker import rerank_results
 from ..embeddings.hf_solon_client_embedder import SolonEmbeddingClient
 from ..embeddings.local_embedder import LocalEmbeddingClient
-from ..db.postgres import get_connection, release_connection, fetch_identities_by_doc_ids 
+from ..db import get_connection, release_connection, fetch_identities_by_doc_ids 
 from ..vector_store.qdrant_service import keyword_search
 from collections import defaultdict
 import asyncio
