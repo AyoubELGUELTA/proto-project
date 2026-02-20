@@ -5,10 +5,9 @@ import re
 
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-
-def split_enriched_chunks(enriched_chunks: List[Dict], max_tokens=3750, overlap=250) -> List[Dict]:
+def split_enriched_chunks(enriched_chunks: List[Dict], max_tokens=1200, overlap=150) -> List[Dict]:
     final_list = []
-    title_counters = {} 
+    title_counters = {}
 
     for original in enriched_chunks:
         text = original['text']
@@ -16,14 +15,15 @@ def split_enriched_chunks(enriched_chunks: List[Dict], max_tokens=3750, overlap=
         
         if base_title not in title_counters:
             title_counters[base_title] = 0
-            
-        # Split classique
+        
+
         splitter = RecursiveCharacterTextSplitter(
-            chunk_size=max_tokens * 3, 
-            chunk_overlap=overlap * 3, 
+            chunk_size=max_tokens * 3.5,  
+            chunk_overlap=overlap * 3.5,  
             separators=["\n\n", "\n", "|", ". ", " ", ""],
             keep_separator=True
         )
+        
         sub_texts = splitter.split_text(text)
         
         for i, sub_text in enumerate(sub_texts):
@@ -47,7 +47,16 @@ def split_enriched_chunks(enriched_chunks: List[Dict], max_tokens=3750, overlap=
             # Flag de coupure si ce n'est pas le dernier morceau
             if "|" in sub_text and i < (len(sub_texts) - 1):
                 sub_chunk['is_table_cut'] = True
+            # Indique si c'est la suite d'un chunk précédent (général)
+            sub_chunk['is_continuation'] = (i > 0)
+            # Indique si le contenu est coupé et continue au prochain chunk (général)
+            sub_chunk['is_cut'] = (i < len(sub_texts) - 1)
 
+            # Indique spécifiquement si un TABLEAU est en cours de coupure
+            sub_chunk['is_table_cut'] = ("|" in sub_text and i < len(sub_texts) - 1)
+            # Indique spécifiquement si on traite la suite d'un TABLEAU
+            sub_chunk['is_table_continuation'] = ("|" in sub_text and i > 0)
+            
             title_counters[base_title] += 1
             final_list.append(sub_chunk) 
 

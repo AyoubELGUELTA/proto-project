@@ -27,10 +27,24 @@ async def process_single_chunk(chunk_data: Dict[str, Any], chunk_id: str) -> Dic
     images = chunk_data.get("images_urls", [])
     heading = chunk_data.get("heading_full", "Sans titre")
     
-    # Flags pour le contexte des tableaux
+    # --- RÉCUPÉRATION DES 4 ATTRIBUTS DE CONTINUITÉ ---
     is_continuation = chunk_data.get("is_continuation", False)
     is_cut = chunk_data.get("is_cut", False)
+    is_table_continuation = chunk_data.get("is_table_continuation", False)
+    is_table_cut = chunk_data.get("is_table_cut", False)
 
+    # Préparation des notes de contexte pour le LLM
+    context_notes = []
+    if is_continuation:
+        context_notes.append("- ℹ️ Ce passage est la SUITE du chunk précédent.")
+    if is_cut:
+        context_notes.append("- ℹ️ Ce passage est COUPÉ et se termine dans le chunk suivant.")
+    if is_table_continuation:
+        context_notes.append("- ⚠️ TABLEAU EN COURS : Tu es au milieu d'un tableau. Ne cherche pas les entêtes, extrais juste les données des lignes présentes.")
+    if is_table_cut:
+        context_notes.append("- ⚠️ TABLEAU COUPÉ : Ce tableau n'est pas fini, il s'arrête brusquement ici.")
+
+    notes_string = "\n".join(context_notes) if context_notes else "Aucune contrainte de continuité particulière."
     try:
         llm = ChatOpenAI(
             model=os.getenv("SUMMARIZER_MODEL_NAME", "gpt-4o-mini"),
@@ -40,53 +54,159 @@ async def process_single_chunk(chunk_data: Dict[str, Any], chunk_id: str) -> Dic
         )
 
         prompt = f"""
-        Tu es un expert en extraction d'entités pour un Knowledge Graph islamique.
+        Tu es un expert en extraction d'entités pour un Knowledge Graph.
 
         CONTEXTE : {heading}
+
+        NOTES DE CONTINUITÉ :
+        {notes_string}
+
         TEXTE : {text}
 
-        MISSION : Extrais UNIQUEMENT les entités MAJEURES :
+        MISSION : Extrais les entités importantes (Personnes, Lieux, Concepts religieux, Événements).
 
-        1. PERSONNES : Prophètes, Compagnons, Savants, Mères des Croyants
-        - Utilise le nom COMPLET (ex: "Aïcha bint Abi Bakr" pas juste "Aïcha")
-        - Inclus honorifiques dans aliases : ["(ra)", "(saw)"]
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        ⚠️ RÈGLES CRITIQUES (s'appliquent à TOUS les types)
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-        2. CONCEPTS RELIGIEUX : Piliers, pratiques, termes techniques
-        - Nom arabe + traduction si pertinente
-        - Ex: "Salat (Prière)", aliases: ["Salat", "Prière", "Prière rituelle"]
+        1. NOM PROPRE vs TITRE/RÔLE :
+        - Utilise TOUJOURS un nom spécifique comme entité principale
+        - Les titres, rôles, et descriptions génériques vont dans aliases
+        
+        ✅ CORRECT :
+        - Personne : "Fatima bint Muhammad" (pas "Fille du Prophète")
+        - Lieu : "La Mecque" (pas "Ville sainte")
+        - Concept : "Salat" (pas "Pilier de l'Islam")
+        - Événement : "Bataille de Badr" (pas "Bataille importante")
+        
+        ❌ FAUX :
+        - "Compagnon du Prophète" ← RÔLE, pas un nom
+        - "Lieu sacré" ← DESCRIPTION, pas un nom
+        - "Pratique religieuse" ← CATÉGORIE, pas un concept précis
 
-        3. LIEUX : Villes sacrées, lieux historiques
-        - Ex: "Médine", aliases: ["Madinah", "Yathrib"]
+        2. NOMS COMPLETS ET PRÉCIS :
+        - Personnes : "Umar ibn al-Khattab" > "Umar"
+        - Lieux : "Médine" avec aliases ["Madinah", "Yathrib"]
+        - Concepts : "Zakat" avec aliases ["Aumône légale", "Zakât"]
+        - Événements : "Hijra" avec aliases ["Hégire", "Migration à Médine"]
 
-        4. ÉVÉNEMENTS : Batailles, révélations, migrations
-        - Ex: "Hijra", aliases: ["Hégire", "Migration"]
+        3. UNE ENTITÉ = UN ÉLÉMENT UNIQUE :
+        - Si plusieurs personnes/lieux/concepts → crée UNE entité PAR élément
+        - "Les compagnons" n'est PAS une entité
+        - Mais "Abu Bakr", "Umar", "Uthman" sont 3 entités distinctes
 
-        CRITÈRES DE SÉLECTION :
-        - L'entité est mentionnée substantiellement (pas juste en passant)
-        - Elle a une importance religieuse/historique
-        - IGNORE : pronoms, mots courants, entités secondaires
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        📋 TYPES D'ENTITÉS À EXTRAIRE
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-        THÈMES CONTEXTUELS (pour aide) :
-        - Piliers de l'Islam, Jurisprudence, Histoire Prophétique, Spiritualité, etc.
+        1. PERSONNES :
+        - Nom complet avec filiation (ex: "Aïcha bint Abi Bakr")
+        - Honorifiques dans aliases : ["Aïcha (ra)", "Mère des Croyants"]
+        - Pertinence élevée si sujet principal du texte
 
-        FORMAT JSON :
+        2. CONCEPTS RELIGIEUX :
+        - Termes arabes + traduction si pertinente
+        - Ex: "Salat" avec aliases ["Prière", "Prière rituelle", "Ṣalāt"]
+        - Piliers, pratiques, termes juridiques, spiritualité
+        - NE PAS extraire : mots génériques ("religion", "foi" seuls)
+
+        3. LIEUX :
+        - Villes sacrées, sites historiques, régions importantes
+        - Ex: "La Mecque" aliases ["Mekka", "Makkah", "Ville sainte"]
+        - Inclus variantes orthographiques dans aliases
+
+        4. ÉVÉNEMENTS :
+        - Batailles, révélations, migrations, événements historiques majeurs
+        - Ex: "Bataille de Uhud" aliases ["Uhud", "Ghazwa Uhud"]
+        - Date ou période dans le nom si pertinent
+
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        📊 CRITÈRES DE PERTINENCE
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        Score 0.9-1.0 : Sujet PRINCIPAL du chunk (plusieurs paragraphes)
+        Score 0.6-0.8 : Mentionné SUBSTANTIELLEMENT (au moins un paragraphe complet)
+        Score 0.3-0.5 : Mention BRÈVE mais contextuellement importante
+        Score <0.3  : NE PAS EXTRAIRE (mention passagère, exemple simple)
+
+        RÈGLE : Si une entité apparaît juste dans une énumération ou exemple rapide → IGNORE-LA
+
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        🎯 FORMAT DE SORTIE
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
         {{
-        "visual_summary": "...",
+        "visual_summary": "Faits extraits des tableaux/images (si présents)",
         "entities": [
             {{
-            "name": "Aïcha bint Abi Bakr",
-            "type": "PERSONNE",
-            "aliases": ["Aisha", "Aïcha (ra)", "Mère des Croyants"],
-            "relevance": 0.9,
-            "themes": ["Mères des Croyants", "Histoire Prophétique"]
+            "name": "Nom Complet et Spécifique",
+            "type": "PERSONNE|LIEU|CONCEPT|EVENEMENT",
+            "aliases": ["Variante 1", "Traduction", "Forme courte", "Honorifique"],
+            "relevance": 0.0-1.0,
+            "themes": ["Thème contextuel large"]
             }}
         ]
         }}
 
-        RÈGLES :
-        - 3-8 entités MAX par chunk (qualité > quantité)
-        - Pas de phrases, JSON pur
-        - Si aucune entité majeure : "entities": []
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        ✅ EXEMPLES CORRECTS
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        Personne :
+        {{
+        "name": "Umar ibn al-Khattab",
+        "type": "PERSONNE",
+        "aliases": ["Umar", "Umar (ra)", "Deuxième Calife", "Al-Faruq"],
+        "relevance": 0.9,
+        "themes": ["Compagnons du Prophète", "Histoire Prophétique"]
+        }}
+
+        Concept :
+        {{
+        "name": "Zakat",
+        "type": "CONCEPT",
+        "aliases": ["Zakât", "Aumône légale", "Aumône obligatoire", "Pilier de l'Islam"],
+        "relevance": 0.8,
+        "themes": ["Piliers de l'Islam", "Jurisprudence"]
+        }}
+
+        Lieu :
+        {{
+        "name": "Médine",
+        "type": "LIEU",
+        "aliases": ["Madinah", "Yathrib", "Ville du Prophète", "Al-Madinah al-Munawwarah"],
+        "relevance": 0.7,
+        "themes": ["Lieux sacrés", "Histoire Prophétique"]
+        }}
+
+        Événement :
+        {{
+        "name": "Bataille de Badr",
+        "type": "EVENEMENT",
+        "aliases": ["Badr", "Ghazwa Badr", "Première grande bataille"],
+        "relevance": 0.95,
+        "themes": ["Batailles prophétiques", "Histoire Prophétique"]
+        }}
+
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        ❌ EXEMPLES À ÉVITER
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        ❌ "Mère des Croyants" → Utilise "Aïcha bint Abi Bakr" (ou autre nom propre)
+        ❌ "Ville sainte" → Utilise "La Mecque" ou "Médine"
+        ❌ "Pilier de l'Islam" → Utilise "Salat", "Zakat" (concepts précis)
+        ❌ "Compagnon" → Utilise "Abu Bakr", "Ali" (noms propres)
+        ❌ "Bataille importante" → Utilise "Bataille de Uhud" (nom précis)
+
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        📏 CONTRAINTES FINALES
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        - Extrais 2-8 entités MAX par chunk (qualité > quantité)
+        - Ignore les pronoms, mots courants, mentions ultra-brèves
+        - Si tableaux/images : extrais les faits NON présents dans le texte
+        - Pas de phrases d'introduction, JSON strict uniquement
+        - Si aucune entité majeure : {{"entities": []}}
         """
 
         message_content = [{"type": "text", "text": prompt}]
@@ -94,7 +214,7 @@ async def process_single_chunk(chunk_data: Dict[str, Any], chunk_id: str) -> Dic
         # Ajout des tableaux en texte
         if tables:
             tables_text = "\n".join([f"Tableau {i+1}: {t}" for i, t in enumerate(tables)])
-            message_content[0]["text"] += f"\n\n--- TABLEAUX ---\n{tables_text}"
+            message_content[0]["text"] += f"\n\n--- CONTENU DES TABLEAUX ---\n{tables_text}"
 
         # Ajout des images
         for url in images:

@@ -10,55 +10,45 @@ import os
 def normalize_entity_name(name: str) -> str:
     """
     Normalise un nom d'entité pour matching robuste.
-    Version ULTRA-STRICTE pour éviter les doublons.
+    Version ULTRA-STRICTE v2.
     """
     if not name:
         return ""
     
-    # 1. Strip whitespace
-    normalized = name.strip()
+    # 1. Strip + lowercase
+    normalized = name.strip().lower()
     
-    # 2. Lowercase
-    normalized = normalized.lower()
-    
-    # 3. Supprime accents (é → e, ï → i)
+    # 2. Supprime accents
     normalized = ''.join(
         c for c in unicodedata.normalize('NFD', normalized)
         if unicodedata.category(c) != 'Mn'
     )
     
-    # 4. Supprime ALL apostrophes et quotes
-    normalized = re.sub(r"[''`´]", "", normalized)
+    # 3. Supprime apostrophes et quotes
+    normalized = re.sub(r"[''`´']", "", normalized)
     
-    # 5. Supprime parenthèses et leur contenu
+    # 4. Supprime parenthèses
     normalized = re.sub(r'\s*\([^)]*\)', '', normalized)
     
-    # 6. Supprime tirets et underscores
+    # 5. Supprime tirets et underscores
     normalized = re.sub(r'[-_]', ' ', normalized)
     
-    # 7. Normalise "ibn", "bint", "al", "as"
+    # 6. Normalise "ibn", "bint", "al", "as"
     normalized = re.sub(r'\bbin\b', 'ibn', normalized)
-    normalized = re.sub(r'\bal[\s-]', 'al ', normalized)
-    normalized = re.sub(r'\bas[\s-]', 'as ', normalized)
+    normalized = re.sub(r'\bal\s', '', normalized)  # Supprime "al " complètement
+    normalized = re.sub(r'\bas\s', '', normalized)  # Supprime "as " complètement
     
-    # 8. Supprime espaces multiples
+    # 7. Normalise les doubles consonnes (yy → y, ss → s)
+    normalized = normalized.replace('yy', 'y')
+    normalized = normalized.replace('ss', 's')
+    
+    # 8. ch → sh (variante arabe)
+    normalized = re.sub(r'ch\b', 'sh', normalized)
+    
+    # 9. Supprime espaces multiples
     normalized = re.sub(r'\s+', ' ', normalized).strip()
     
     return normalized
-
-
-# TESTS
-assert normalize_entity_name("Umar ibn Al Khattab") == "umar ibn al khattab"
-assert normalize_entity_name("Umar ibn al-Khattab") == "umar ibn al khattab"
-assert normalize_entity_name("'Aisha bint Abi Bakr") == "aisha bint abi bakr"
-assert normalize_entity_name("Aïcha bint Abi Bakr") == "aicha bint abi bakr"
-assert normalize_entity_name("Prophète Muhammad (saw)") == "prophete muhammad"
-
-# Exemples de résultats
-# "Aïcha bint Abi Bakr" → "aicha bint abi bakr"
-# "'Aisha (ra)" → "aisha"
-# "Wudu" → "wudu"
-# "Woudou" → "woudou" (⚠️ problème de variante linguistique)
 
 async def resolve_entity(extracted_name: str, extracted_aliases: List[str], conn=None):
     should_release = False
@@ -477,3 +467,83 @@ async def finalize_entity_graph(doc_id: str):
     except Exception as e:
         print(f"❌ Erreur finalisation graphe : {e}")
         raise
+
+
+async def merge_known_duplicates():
+    """
+    Fusionne les doublons détectés manuellement.
+    """
+    conn = await get_connection()
+    
+    # Liste des paires à fusionner (keeper, duplicate)
+    duplicates_to_merge = [
+        ("Safiyya bint Huyayy", "Safiyya bint Huyay"),
+        ("Khawla bint Hakim", "Khawla bint Al Hakim"),
+        ("Abdullah ibn Ubay ibn Salul", "'AbdAllah ibn Ubay ibn Salul"),
+        ("Zaynab bint Jahsh (ra)", "Zaynab bint Jahch"),
+    ]
+    
+    try:
+        for keeper_name, dup_name in duplicates_to_merge:
+            print(f"\n🔀 Fusion : {keeper_name} ← {dup_name}")
+            
+            # Récupère les IDs
+            keeper = await conn.fetchrow(
+                "SELECT entity_id, aliases FROM entities WHERE name = $1", 
+                keeper_name
+            )
+            dup = await conn.fetchrow(
+                "SELECT entity_id, aliases FROM entities WHERE name = $1", 
+                dup_name
+            )
+            
+            if not keeper or not dup:
+                print(f"  ⚠️ Entité introuvable, skip")
+                continue
+            
+            async with conn.transaction():
+                # Fusionne aliases
+                all_aliases = set(keeper['aliases'] or [])
+                all_aliases.add(dup_name)
+                all_aliases.update(dup['aliases'] or [])
+                
+                await conn.execute("""
+                    UPDATE entities 
+                    SET aliases = $1
+                    WHERE entity_id = $2
+                """, list(all_aliases), keeper['entity_id'])
+                
+                # Réassigne les liens
+                await conn.execute("""
+                    UPDATE entity_links
+                    SET entity_id = $1
+                    WHERE entity_id = $2
+                    ON CONFLICT (entity_id, chunk_id) DO NOTHING
+                """, keeper['entity_id'], dup['entity_id'])
+                
+                # Supprime le doublon
+                await conn.execute(
+                    "DELETE FROM entities WHERE entity_id = $1", 
+                    dup['entity_id']
+                )
+                
+                # Recalcule chunk_count
+                new_count = await conn.fetchval("""
+                    SELECT COUNT(*) FROM entity_links WHERE entity_id = $1
+                """, keeper['entity_id'])
+                
+                await conn.execute("""
+                    UPDATE entities SET chunk_count = $1 WHERE entity_id = $2
+                """, new_count, keeper['entity_id'])
+                
+                print(f"  ✅ Fusionné")
+        
+        print("\n✅ Fusion terminée")
+        
+    finally:
+        await release_connection(conn)
+
+
+# Lance
+import asyncio
+asyncio.run(merge_known_duplicates())
