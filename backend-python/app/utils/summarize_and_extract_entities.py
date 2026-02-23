@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
 
-semaphore = asyncio.Semaphore(10)
+semaphore = asyncio.Semaphore(4)
 
 
 async def bounded_process(chunk, chunk_id):
@@ -118,7 +118,8 @@ async def process_single_chunk(chunk_data: Dict[str, Any], chunk_id: str) -> Dic
         4. ÉVÉNEMENTS :
         - Batailles, révélations, migrations, événements historiques majeurs
         - Ex: "Bataille de Uhud" aliases ["Uhud", "Ghazwa Uhud"]
-        - Date ou période dans le nom si pertinent
+        - Utilise un NOM DESCRIPTIF, pas juste la date
+        - La DATE va dans aliases
 
         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         📊 CRITÈRES DE PERTINENCE

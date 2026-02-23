@@ -2,7 +2,7 @@ import os
 import uuid
 import time
 import gc
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 
@@ -69,7 +69,7 @@ async def list_documents():
 
 
 @app.post("/ingest-bulk")
-async def ingest_bulk(files: List[UploadFile] = File(...), config_id: str = "01"):
+async def ingest_bulk(files: List[UploadFile] = File(...), config_id: str = "01", background_tasks: BackgroundTasks = BackgroundTasks()):
     """
     Route pour uploader et ingérer plusieurs PDFs à la fois.
     Utilise la configuration de benchmark spécifiée pour l'ensemble du lot.
@@ -81,10 +81,10 @@ async def ingest_bulk(files: List[UploadFile] = File(...), config_id: str = "01"
 
     for file in files:
         try:
-            # On appelle directement la logique de ingest_pdf pour chaque fichier
-            # Note : on réutilise la logique interne pour garder la cohérence
-            file_result = await ingest_single_file(file, config_id)
+            # ICI : tu passes background_tasks en argument
+            file_result = await ingest_single_file(file, config_id, background_tasks)
             results.append(file_result)
+            
         except Exception as e:
             print(f"❌ Error ingesting {file.filename}: {e}")
             results.append({
@@ -104,7 +104,7 @@ async def ingest_bulk(files: List[UploadFile] = File(...), config_id: str = "01"
         "results": results
     }
 
-async def ingest_single_file(file: UploadFile, config_id: str):
+async def ingest_single_file(file: UploadFile, config_id: str, background_tasks: BackgroundTasks):
     """
     Pipeline d'ingestion optimisé : Partition -> Identity -> Store -> AI Enrichment & Entity Graph -> Vectorize
     """
@@ -151,19 +151,17 @@ async def ingest_single_file(file: UploadFile, config_id: str):
     await store_vectors_incrementally(vectorized_docs=vectorised_chunks, collection_name="dev_collection")
 
     #9. FINALISATION DU GRAPHE D'ENTITÉS (Etabli les cooccurences + les refresh/make les global summaries si + de 5 chunks)
-    graph_stats = await finalize_entity_graph(doc_uuid)
+    background_tasks.add_task(finalize_entity_graph, doc_uuid)
 
     duration = round(time.perf_counter() - start_time, 2)
-    print(f"✅ Ingestion complète de '{file.filename}' en {duration}s. ({len(chunk_ids)} chunks)")
-
+    print(f"📡 Vectorisation terminée en {duration}s. Finalisation du graphe lancée en tâche de fond.")
     return {
         "status": "success",
         "doc_id": doc_uuid,
         "filename": file.filename,
         "chunks_count": len(chunk_ids),
-        "entity_relations": graph_stats['cooccurrences'],
-        "entity_summaries": graph_stats['summaries'],
-        "duration": duration
+        "message": "Le document est prêt pour la recherche. Les résumés d'entités sont en cours de génération.",
+        "duration_to_vector": duration
     }
 chat_history = []
 

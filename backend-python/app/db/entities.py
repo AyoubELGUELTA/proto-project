@@ -6,6 +6,18 @@ import re
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 import os
+from difflib import SequenceMatcher
+
+# ENV VARIABLES FOR LINK_ENTITY_TO_CHUNK FUNCTION
+
+TRUST_THRESHOLD_ALIASES = int(os.getenv("ENTITY_TRUST_MAX_ALIASES", "5"))
+TRUST_THRESHOLD_CHUNKS = int(os.getenv("ENTITY_TRUST_MAX_CHUNKS", "2"))
+SIMILARITY_THRESHOLD = float(os.getenv("ENTITY_SIMILARITY_THRESHOLD", "0.7"))
+
+
+def similarity(a: str, b: str) -> float:
+    """Calcule similarité entre 2 strings (0.0 à 1.0)"""
+    return SequenceMatcher(None, a, b).ratio()
 
 def normalize_entity_name(name: str) -> str:
     """
@@ -51,52 +63,63 @@ def normalize_entity_name(name: str) -> str:
     return normalized
 
 async def resolve_entity(extracted_name: str, extracted_aliases: List[str], conn=None):
+    """
+    Cherche une entité existante via normalisation.
+    Retourne l'entité complète si trouvée, sinon None.
+    """
     should_release = False
     if conn is None:
         conn = await get_connection()
         should_release = True
 
     try:
-        # Normalise en Python
+        # Normalise le nom et les aliases
         normalized_main = normalize_entity_name(extracted_name)
-        
         all_normalized = set([normalized_main])
         for alias in extracted_aliases:
             if alias:
                 all_normalized.add(normalize_entity_name(alias))
         
-        # 1. Cherche par normalized_name exact
+        # Cherche d'abord par normalized_name exact
         exact_match = await conn.fetchrow("""
-            SELECT entity_id, name, aliases, normalized_name 
+            SELECT entity_id, name, aliases, normalized_name, chunk_count
             FROM entities 
             WHERE normalized_name = $1
         """, normalized_main)
         
         if exact_match:
-            print(f"✅ Match exact : {extracted_name} → {exact_match['name']}")
             return exact_match
         
-        # 2. Cherche dans les aliases (utilise la fonction SQL normalize_entity_name)
-        candidates = await conn.fetch("""
-            SELECT entity_id, name, aliases, normalized_name 
-            FROM entities 
-            WHERE EXISTS (
-                SELECT 1 
-                FROM unnest(aliases) AS alias
-                WHERE normalize_entity_name(alias) = ANY($1::text[])
-            )
-        """, list(all_normalized))
-        
-        if not candidates:
-            print(f"🆕 Nouvelle entité : {extracted_name}")
+        # On fait la normalisation côté Python plutôt que SQL
+        if not all_normalized:
             return None
         
-        # 3. Si plusieurs candidats, prend celui avec le plus d'overlap
+        # Récupère toutes les entités et filtre en Python
+        all_entities = await conn.fetch("""
+            SELECT entity_id, name, aliases, normalized_name, chunk_count
+            FROM entities
+        """)
+        
+        # Filtre en Python
+        candidates = []
+        for entity in all_entities:
+            entity_aliases_normalized = set([normalize_entity_name(entity['name'])])
+            if entity['aliases']:
+                for alias in entity['aliases']:
+                    entity_aliases_normalized.add(normalize_entity_name(alias))
+            
+            # Check intersection
+            if all_normalized.intersection(entity_aliases_normalized):
+                candidates.append(entity)
+        
+        if not candidates:
+            return None
+        
+        # Si plusieurs candidats, prends celui avec le plus d'overlap
         best_cand = None
         max_score = -1
         
         for cand in candidates:
-            # Normalise en Python pour comparaison
             cand_normalized = set([normalize_entity_name(cand['name'])])
             for alias in (cand['aliases'] or []):
                 cand_normalized.add(normalize_entity_name(alias))
@@ -106,7 +129,6 @@ async def resolve_entity(extracted_name: str, extracted_aliases: List[str], conn
                 max_score = score
                 best_cand = cand
         
-        print(f"✅ Match par alias : {extracted_name} → {best_cand['name']} (score: {max_score})")
         return best_cand
         
     finally:
@@ -116,7 +138,7 @@ async def resolve_entity(extracted_name: str, extracted_aliases: List[str], conn
 async def link_entity_to_chunk(chunk_id: str, extracted_entity: Dict[str, Any]):
     """
     Lie une entité extraite à un chunk.
-    Gère la création/mise à jour d'entité + liaison aux tags système.
+    Stratégie : Confiance au LLM pour les premiers chunks, puis filtrage strict.
     """
     conn = await get_connection()
     name = extracted_entity['name']
@@ -126,64 +148,143 @@ async def link_entity_to_chunk(chunk_id: str, extracted_entity: Dict[str, Any]):
 
     try:
         async with conn.transaction():
+            # 1. Tentative de résolution
             entity = await resolve_entity(name, aliases, conn=conn)
 
             if entity:
-                # Entité existe, mise à jour aliases
+                # Entité existe déjà
                 entity_id = entity['entity_id']
                 existing_aliases = set(entity['aliases'] or [])
-                new_aliases = existing_aliases.union(set(aliases))
+                current_chunk_count = entity['chunk_count']
+                
+                # Stratégie de confiance progressive
+                is_early_stage = (
+                    len(existing_aliases) < 5 and 
+                    current_chunk_count <= 2
+                )
+                
+                filtered_new_aliases = set()
+                entity_normalized = normalize_entity_name(entity['name'])
+                
+                # Normalise tous les aliases existants
+                existing_normalized = set([entity_normalized])
+                for existing_alias in existing_aliases:
+                    existing_normalized.add(normalize_entity_name(existing_alias))
+                
+                for alias in aliases:
+                    alias_normalized = normalize_entity_name(alias)
+                    is_valid = False
+                    match_reason = ""
+                    
+                    # CHECK 1 : Match avec le nom principal
+                    if (
+                        alias_normalized == entity_normalized or
+                        alias_normalized in entity_normalized or
+                        entity_normalized in alias_normalized
+                    ):
+                        is_valid = True
+                        match_reason = "match nom principal"
+                    
+                    # CHECK 2 : Match avec un alias existant
+                    if not is_valid:
+                        for existing_norm in existing_normalized:
+                            if (
+                                alias_normalized == existing_norm or
+                                alias_normalized in existing_norm or
+                                existing_norm in alias_normalized
+                            ):
+                                is_valid = True
+                                match_reason = "match alias existant (exact)"
+                                break
+                            
+                            # Similarité
+                            sim = similarity(alias_normalized, existing_norm)
+                            if sim > 0.7:
+                                is_valid = True
+                                match_reason = f"match alias existant (sim={sim:.2f})"
+                                break
+                    
+                    # CHECK 3 : Similarité avec nom principal
+                    if not is_valid:
+                        sim = similarity(alias_normalized, entity_normalized)
+                        if sim > 0.7:
+                            is_valid = True
+                            match_reason = f"similarité nom principal (sim={sim:.2f})"
+                    
+                    # CHECK 4 : CONFIANCE LLM (que dans les premiers chunks de l'entité)
+                    if not is_valid and is_early_stage:
+                        is_valid = True
+                        match_reason = f"confiance LLM (chunk #{current_chunk_count + 1}, {len(existing_aliases)} aliases)"
+                    
+                    if is_valid:
+                        filtered_new_aliases.add(alias)
+                        print(f"  ✅ Alias accepté : '{alias}' pour '{entity['name']}' ({match_reason})")
+                    else:
+                        print(f"  ❌ Alias REJETÉ : '{alias}' pour '{entity['name']}' (aucun match)")
+                
+                new_aliases = existing_aliases.union(filtered_new_aliases)
                 
                 if len(new_aliases) > len(existing_aliases):
                     await conn.execute("""
                         UPDATE entities 
-                        SET aliases = $1, 
+                        SET aliases = $1,
                             chunk_count = chunk_count + 1,
                             last_updated = CURRENT_TIMESTAMP
                         WHERE entity_id = $2
                     """, list(new_aliases), entity_id)
+                    print(f"  📝 {len(filtered_new_aliases)} nouveaux aliases ajoutés")
                 else:
-                    # Incrémente juste le compteur
                     await conn.execute("""
                         UPDATE entities 
                         SET chunk_count = chunk_count + 1,
                             last_updated = CURRENT_TIMESTAMP
                         WHERE entity_id = $1
                     """, entity_id)
+                    
             else:
-                # Création nouvelle entité
+                # 2. Création nouvelle entité
                 normalized = normalize_entity_name(name)
+                filtered_aliases = set(aliases)
+                print(f"  🆕 Nouvelle entité : '{name}' avec {len(filtered_aliases)} aliases (confiance totale)")
                 
-                # Double-check pour éviter race condition
-                existing = await conn.fetchrow("""
-                    SELECT entity_id FROM entities WHERE normalized_name = $1
-                """, normalized)
-                
-                if existing:
-                    entity_id = existing['entity_id']
-                else:
+                # GESTION AMÉLIORÉE DE LA RACE CONDITION, on return l'id de l'entité deja existente pour pas faire crash l'actuel try sur la meme entité
+                try:
                     entity_id = await conn.fetchval("""
                         INSERT INTO entities (name, normalized_name, aliases, entity_type, chunk_count)
                         VALUES ($1, $2, $3, $4, 1)
                         RETURNING entity_id;
-                    """, name, normalized, aliases, entity_type)
+                    """, name, normalized, list(filtered_aliases), entity_type)
+                except Exception as insert_error:
+                    if "duplicate key" in str(insert_error):
+                        # Quelqu'un d'autre a créé l'entité entre-temps
+                        print(f"  ⚠️ Race condition détectée, récupération de l'entité existante")
+                        existing = await conn.fetchrow("""
+                            SELECT entity_id FROM entities WHERE normalized_name = $1
+                        """, normalized)
+                        if existing:
+                            entity_id = existing['entity_id']
+                        else:
+                            raise  
+                    else:
+                        raise  
             
-            # Liaison entité ↔ chunk
+            # 3. Liaison entité ↔ chunk
             await conn.execute("""
                 INSERT INTO entity_links (entity_id, chunk_id, relevance_score)
                 VALUES ($1, $2, $3)
                 ON CONFLICT (entity_id, chunk_id) DO NOTHING;
             """, entity_id, uuid.UUID(chunk_id), extracted_entity.get('relevance', 1.0))
             
-            # Liaison entité ↔ tags système
+            # 4. Liaison entité ↔ tags système
             await link_entity_to_system_tags(entity_id, themes, conn)
             
     except Exception as e:  
         print(f"❌ Erreur link_entity [{name}]: {e}")
-        raise
+        # Ne pas raise pour éviter de bloquer toute l'ingestion
+        import traceback
+        traceback.print_exc()
     finally:
         await release_connection(conn)
-
 
 async def link_entity_to_system_tags(entity_id: str, extracted_themes: List[str], conn):
     """
@@ -468,82 +569,3 @@ async def finalize_entity_graph(doc_id: str):
         print(f"❌ Erreur finalisation graphe : {e}")
         raise
 
-
-async def merge_known_duplicates():
-    """
-    Fusionne les doublons détectés manuellement.
-    """
-    conn = await get_connection()
-    
-    # Liste des paires à fusionner (keeper, duplicate)
-    duplicates_to_merge = [
-        ("Safiyya bint Huyayy", "Safiyya bint Huyay"),
-        ("Khawla bint Hakim", "Khawla bint Al Hakim"),
-        ("Abdullah ibn Ubay ibn Salul", "'AbdAllah ibn Ubay ibn Salul"),
-        ("Zaynab bint Jahsh (ra)", "Zaynab bint Jahch"),
-    ]
-    
-    try:
-        for keeper_name, dup_name in duplicates_to_merge:
-            print(f"\n🔀 Fusion : {keeper_name} ← {dup_name}")
-            
-            # Récupère les IDs
-            keeper = await conn.fetchrow(
-                "SELECT entity_id, aliases FROM entities WHERE name = $1", 
-                keeper_name
-            )
-            dup = await conn.fetchrow(
-                "SELECT entity_id, aliases FROM entities WHERE name = $1", 
-                dup_name
-            )
-            
-            if not keeper or not dup:
-                print(f"  ⚠️ Entité introuvable, skip")
-                continue
-            
-            async with conn.transaction():
-                # Fusionne aliases
-                all_aliases = set(keeper['aliases'] or [])
-                all_aliases.add(dup_name)
-                all_aliases.update(dup['aliases'] or [])
-                
-                await conn.execute("""
-                    UPDATE entities 
-                    SET aliases = $1
-                    WHERE entity_id = $2
-                """, list(all_aliases), keeper['entity_id'])
-                
-                # Réassigne les liens
-                await conn.execute("""
-                    UPDATE entity_links
-                    SET entity_id = $1
-                    WHERE entity_id = $2
-                    ON CONFLICT (entity_id, chunk_id) DO NOTHING
-                """, keeper['entity_id'], dup['entity_id'])
-                
-                # Supprime le doublon
-                await conn.execute(
-                    "DELETE FROM entities WHERE entity_id = $1", 
-                    dup['entity_id']
-                )
-                
-                # Recalcule chunk_count
-                new_count = await conn.fetchval("""
-                    SELECT COUNT(*) FROM entity_links WHERE entity_id = $1
-                """, keeper['entity_id'])
-                
-                await conn.execute("""
-                    UPDATE entities SET chunk_count = $1 WHERE entity_id = $2
-                """, new_count, keeper['entity_id'])
-                
-                print(f"  ✅ Fusionné")
-        
-        print("\n✅ Fusion terminée")
-        
-    finally:
-        await release_connection(conn)
-
-
-# Lance
-import asyncio
-asyncio.run(merge_known_duplicates())
