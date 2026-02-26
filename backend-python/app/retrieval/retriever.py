@@ -186,3 +186,6 @@ def compute_rrf(rankings: List[List[str]], k=60):
     # Trier par score décroissant
     sorted_ids = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     return [item[0] for item in sorted_ids]
+
+
+

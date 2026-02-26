@@ -17,9 +17,9 @@ from .db import (init_db, seed_system_tags, get_documents, get_or_create_documen
 
 from .embeddings.embedder import vectorize_documents
 from .vector_store.qdrant_service import store_vectors_incrementally
-from .rag.retriever import retrieve_chunks
-from .rag.answer_generator import generate_answer_with_history
-from .rag.query_rewriter import rewrite_query
+from .retrieval.retriever import retrieve_chunks
+from .retrieval.answer_generator import generate_answer_with_history
+from .retrieval.query_analyzer import analyze_and_rewrite_query, QueryType
 from .utils.chunks_ingest_processor import process_enriched_chunks, split_enriched_chunks
 from .utils.summarize_and_extract_entities import summarise_and_extract_entities
 
@@ -168,50 +168,57 @@ chat_history = []
 @app.get("/query")
 async def query_rag(question: str, limit: int = 20, config_id: str = "01"):
     global chat_history
-
+    
     try:
-        # 0. Gestion de la config Benchmark
-        # Si un config_id est passé, on écrase les paramètres par défaut
         config = get_benchmark_config_rag(config_id) if config_id else {
-            "top_k": 50, # Retrieval élargi par défaut [cite: 2026-02-10]
-            "top_n": limit, 
+            "top_k": 50,
+            "top_n": limit,
             "prompt_style": "verbose"
         }
-
-        # 1. Rewrite : Génération des 3 variantes [cite: 2026-02-10]
-        standalone_query = await rewrite_query(question, chat_history)
-
-        # 2. Retrieve + Rerank (On utilise les limites de la config)
-        # On passe config["top_k"] pour Qdrant et config["top_n"] pour le Reranker [cite: 2026-02-10]
-        final_context = await retrieve_chunks(
-            standalone_query, 
-            limit=config["top_k"], 
-            rerank_limit=config["top_n"]
-        )
-
-        if not final_context:
-            return {"answer": "Pas d'infos trouvées.", "sources": []}
-
-        # 3. Generation avec le style de prompt choisi [cite: 2026-02-10]
-        answer = await generate_answer_with_history(
-            question, 
-            final_context, 
-            chat_history, 
-            style=config["prompt_style"]
-        )
-
-        # 4. Retour enrichi pour ton analyse
+        
+        # Analyse complète (rewriting + classification)
+        query_analysis = await analyze_and_rewrite_query(question, chat_history)
+        
+        standalone_query = query_analysis["vector_query"]
+        query_type = query_analysis["query_type"]
+        confidence = query_analysis["confidence"]
+        entities_mentioned = query_analysis["entities_mentioned"]
+        
+        print(f"📊 Type: {query_type} | Conf: {confidence:.2f} | Entities: {entities_mentioned}")
+        
+        # Retrieval (ton code existant)
+        # final_context = await retrieve_chunks(
+        #     standalone_query,
+        #     limit=config["top_k"],
+        #     rerank_limit=config["top_n"]
+        # )
+        
+        # if not final_context:
+        #     return {"answer": "Pas d'infos trouvées.", "sources": []}
+        
+        # # Generation (ton code existant)
+        # answer = await generate_answer_with_history(
+        #     question,
+        #     final_context,
+        #     chat_history,
+        #     style=config["prompt_style"]
+        # )
+        
+        # Retour enrichi
         return {
-            "answer": answer,
+            # "answer": answer,
             "standalone_query": standalone_query,
+            "query_type": query_type,              
+            "confidence": confidence,              
+            "entities_detected": entities_mentioned, 
             "config_applied": config_id or "default",
-            "chunks_count": len([c for c in final_context if not c.get("is_identity")]),
-            "sources": final_context # Ici tu verras tes textes, tableaux et scores de reranking [cite: 2026-02-10]
+            # "chunks_count": len([c for c in final_context if not c.get("is_identity")]),
+            # "sources": final_context
         }
-
+        
     except Exception as e:
         print(f"❌ Erreur: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
     
     
 @app.post("/clear-history") #to clear history context of the user, every day, every new chat, ...
