@@ -63,26 +63,21 @@ def normalize_entity_name(name: str) -> str:
     return normalized
 
 async def resolve_entity(extracted_name: str, extracted_aliases: List[str], conn=None):
-    """
-    Cherche une entité existante via normalisation.
-    Retourne l'entité complète si trouvée, sinon None.
-    """
     should_release = False
     if conn is None:
         conn = await get_connection()
         should_release = True
 
     try:
-        # Normalise le nom et les aliases
         normalized_main = normalize_entity_name(extracted_name)
         all_normalized = set([normalized_main])
         for alias in extracted_aliases:
             if alias:
                 all_normalized.add(normalize_entity_name(alias))
         
-        # Cherche d'abord par normalized_name exact
+        # Match exact
         exact_match = await conn.fetchrow("""
-            SELECT entity_id, name, aliases, normalized_name, chunk_count
+            SELECT entity_id, name, aliases, normalized_name, chunk_count, normalized_aliases
             FROM entities 
             WHERE normalized_name = $1
         """, normalized_main)
@@ -90,40 +85,22 @@ async def resolve_entity(extracted_name: str, extracted_aliases: List[str], conn
         if exact_match:
             return exact_match
         
-        # On fait la normalisation côté Python plutôt que SQL
-        if not all_normalized:
-            return None
-        
-        # Récupère toutes les entités et filtre en Python
-        all_entities = await conn.fetch("""
-            SELECT entity_id, name, aliases, normalized_name, chunk_count
+        #  Match via index GIN (très rapide même avec 10k entités)
+        candidates = await conn.fetch("""
+            SELECT entity_id, name, aliases, normalized_name, chunk_count, normalized_aliases
             FROM entities
-        """)
-        
-        # Filtre en Python
-        candidates = []
-        for entity in all_entities:
-            entity_aliases_normalized = set([normalize_entity_name(entity['name'])])
-            if entity['aliases']:
-                for alias in entity['aliases']:
-                    entity_aliases_normalized.add(normalize_entity_name(alias))
-            
-            # Check intersection
-            if all_normalized.intersection(entity_aliases_normalized):
-                candidates.append(entity)
+            WHERE normalized_aliases && $1::text[]
+        """, list(all_normalized))
         
         if not candidates:
             return None
         
-        # Si plusieurs candidats, prends celui avec le plus d'overlap
+        # Meilleur score
         best_cand = None
         max_score = -1
         
         for cand in candidates:
-            cand_normalized = set([normalize_entity_name(cand['name'])])
-            for alias in (cand['aliases'] or []):
-                cand_normalized.add(normalize_entity_name(alias))
-            
+            cand_normalized = set(cand['normalized_aliases'] or [])
             score = len(all_normalized.intersection(cand_normalized))
             if score > max_score:
                 max_score = score
@@ -134,11 +111,10 @@ async def resolve_entity(extracted_name: str, extracted_aliases: List[str], conn
     finally:
         if should_release:
             await release_connection(conn)
-
+            
 async def link_entity_to_chunk(chunk_id: str, extracted_entity: Dict[str, Any]):
     """
-    Lie une entité extraite à un chunk.
-    Stratégie : Confiance au LLM pour les premiers chunks, puis filtrage strict.
+    Lie une entité extraite à un chunk avec normalisation automatique des alias.
     """
     conn = await get_connection()
     name = extracted_entity['name']
@@ -158,15 +134,12 @@ async def link_entity_to_chunk(chunk_id: str, extracted_entity: Dict[str, Any]):
                 current_chunk_count = entity['chunk_count']
                 
                 # Stratégie de confiance progressive
-                is_early_stage = (
-                    len(existing_aliases) < 5 and 
-                    current_chunk_count <= 2
-                )
+                is_early_stage = (len(existing_aliases) < 5 and current_chunk_count <= 2)
                 
                 filtered_new_aliases = set()
                 entity_normalized = normalize_entity_name(entity['name'])
                 
-                # Normalise tous les aliases existants
+                # Normalise tous les aliases existants pour comparaison
                 existing_normalized = set([entity_normalized])
                 for existing_alias in existing_aliases:
                     existing_normalized.add(normalize_entity_name(existing_alias))
@@ -176,63 +149,54 @@ async def link_entity_to_chunk(chunk_id: str, extracted_entity: Dict[str, Any]):
                     is_valid = False
                     match_reason = ""
                     
-                    # CHECK 1 : Match avec le nom principal
-                    if (
-                        alias_normalized == entity_normalized or
-                        alias_normalized in entity_normalized or
-                        entity_normalized in alias_normalized
-                    ):
+                    # Logique de validation (Check 1 à 4 identique à ton code actuel)
+                    if alias_normalized == entity_normalized or alias_normalized in entity_normalized or entity_normalized in alias_normalized:
                         is_valid = True
                         match_reason = "match nom principal"
                     
-                    # CHECK 2 : Match avec un alias existant
                     if not is_valid:
                         for existing_norm in existing_normalized:
-                            if (
-                                alias_normalized == existing_norm or
-                                alias_normalized in existing_norm or
-                                existing_norm in alias_normalized
-                            ):
+                            if alias_normalized == existing_norm or alias_normalized in existing_norm or existing_norm in alias_normalized:
                                 is_valid = True
                                 match_reason = "match alias existant (exact)"
                                 break
-                            
-                            # Similarité
                             sim = similarity(alias_normalized, existing_norm)
                             if sim > 0.7:
                                 is_valid = True
                                 match_reason = f"match alias existant (sim={sim:.2f})"
                                 break
                     
-                    # CHECK 3 : Similarité avec nom principal
                     if not is_valid:
                         sim = similarity(alias_normalized, entity_normalized)
                         if sim > 0.7:
                             is_valid = True
                             match_reason = f"similarité nom principal (sim={sim:.2f})"
                     
-                    # CHECK 4 : CONFIANCE LLM (que dans les premiers chunks de l'entité)
                     if not is_valid and is_early_stage:
                         is_valid = True
-                        match_reason = f"confiance LLM (chunk #{current_chunk_count + 1}, {len(existing_aliases)} aliases)"
+                        match_reason = "confiance LLM"
                     
                     if is_valid:
                         filtered_new_aliases.add(alias)
-                        print(f"  ✅ Alias accepté : '{alias}' pour '{entity['name']}' ({match_reason})")
-                    else:
-                        print(f"  ❌ Alias REJETÉ : '{alias}' pour '{entity['name']}' (aucun match)")
+
+                # --- MISE À JOUR AVEC NORMALIZED_ALIASES ---
+                new_aliases_list = list(existing_aliases.union(filtered_new_aliases))
                 
-                new_aliases = existing_aliases.union(filtered_new_aliases)
-                
-                if len(new_aliases) > len(existing_aliases):
+                # On prépare la liste normalisée pour la nouvelle colonne
+                # On inclut le nom principal + tous les alias pour un matching exhaustif
+                all_to_normalize = [entity['name']] + new_aliases_list
+                new_normalized_aliases = list(set([normalize_entity_name(a) for a in all_to_normalize if a]))
+
+                if len(new_aliases_list) > len(existing_aliases):
                     await conn.execute("""
                         UPDATE entities 
                         SET aliases = $1,
+                            normalized_aliases = $2,
                             chunk_count = chunk_count + 1,
                             last_updated = CURRENT_TIMESTAMP
-                        WHERE entity_id = $2
-                    """, list(new_aliases), entity_id)
-                    print(f"  📝 {len(filtered_new_aliases)} nouveaux aliases ajoutés")
+                        WHERE entity_id = $3
+                    """, new_aliases_list, new_normalized_aliases, entity_id)
+                    print(f"  📝 {len(filtered_new_aliases)} nouveaux aliases (et leurs versions normalisées) ajoutés")
                 else:
                     await conn.execute("""
                         UPDATE entities 
@@ -242,50 +206,46 @@ async def link_entity_to_chunk(chunk_id: str, extracted_entity: Dict[str, Any]):
                     """, entity_id)
                     
             else:
-                # 2. Création nouvelle entité
-                normalized = normalize_entity_name(name)
-                filtered_aliases = set(aliases)
-                print(f"  🆕 Nouvelle entité : '{name}' avec {len(filtered_aliases)} aliases (confiance totale)")
+                # 2. Création nouvelle entité avec NORMALIZED_ALIASES
+                main_normalized = normalize_entity_name(name)
+                unique_aliases = list(set(aliases))
                 
-                # GESTION AMÉLIORÉE DE LA RACE CONDITION, on return l'id de l'entité deja existente pour pas faire crash l'actuel try sur la meme entité
+                # Préparation du tableau de recherche normalisé
+                all_to_normalize = [name] + unique_aliases
+                normalized_aliases_list = list(set([normalize_entity_name(a) for a in all_to_normalize if a]))
+                
+                print(f"  🆕 Nouvelle entité : '{name}' avec {len(unique_aliases)} aliases")
+                
                 try:
                     entity_id = await conn.fetchval("""
-                        INSERT INTO entities (name, normalized_name, aliases, entity_type, chunk_count)
-                        VALUES ($1, $2, $3, $4, 1)
+                        INSERT INTO entities (name, normalized_name, aliases, normalized_aliases, entity_type, chunk_count)
+                        VALUES ($1, $2, $3, $4, $5, 1)
                         RETURNING entity_id;
-                    """, name, normalized, list(filtered_aliases), entity_type)
+                    """, name, main_normalized, unique_aliases, normalized_aliases_list, entity_type)
                 except Exception as insert_error:
                     if "duplicate key" in str(insert_error):
-                        # Quelqu'un d'autre a créé l'entité entre-temps
-                        print(f"  ⚠️ Race condition détectée, récupération de l'entité existante")
-                        existing = await conn.fetchrow("""
-                            SELECT entity_id FROM entities WHERE normalized_name = $1
-                        """, normalized)
-                        if existing:
-                            entity_id = existing['entity_id']
-                        else:
-                            raise  
+                        print(f"  ⚠️ Race condition détectée")
+                        existing = await conn.fetchrow("SELECT entity_id FROM entities WHERE normalized_name = $1", main_normalized)
+                        entity_id = existing['entity_id'] if existing else None
                     else:
                         raise  
             
-            # 3. Liaison entité ↔ chunk
-            await conn.execute("""
-                INSERT INTO entity_links (entity_id, chunk_id, relevance_score)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (entity_id, chunk_id) DO NOTHING;
-            """, entity_id, uuid.UUID(chunk_id), extracted_entity.get('relevance', 1.0))
-            
-            # 4. Liaison entité ↔ tags système
-            await link_entity_to_system_tags(entity_id, themes, conn)
+            # 3 & 4 (Liaison chunk et tags identique...)
+            if entity_id:
+                await conn.execute("""
+                    INSERT INTO entity_links (entity_id, chunk_id, relevance_score)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (entity_id, chunk_id) DO NOTHING;
+                """, entity_id, uuid.UUID(chunk_id), extracted_entity.get('relevance', 1.0))
+                
+                await link_entity_to_system_tags(entity_id, themes, conn)
             
     except Exception as e:  
         print(f"❌ Erreur link_entity [{name}]: {e}")
-        # Ne pas raise pour éviter de bloquer toute l'ingestion
         import traceback
         traceback.print_exc()
     finally:
         await release_connection(conn)
-
 async def link_entity_to_system_tags(entity_id: str, extracted_themes: List[str], conn):
     """
     Lie une entité aux tags système via matching textuel.

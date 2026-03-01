@@ -11,35 +11,41 @@ async def resolve_entities_in_query(entities_mentioned: List[Dict]) -> List[Dict
     conn = await get_connection()
     resolved = []
     
-    # Sets pour suivre ce qui a déjà été ajouté au résultat final
     resolved_ids = set()
     resolved_tag_ids = set()
     
     try:
+        print(f"🔍 ENTITY RESOLUTION : {len(entities_mentioned)} entité(s) à résoudre")
+        
         for entity_mention in entities_mentioned:
             primary = entity_mention.get("primary", "")
             variants = entity_mention.get("variants", [])
             all_variants = [primary] + variants
             
+            print(f"   🔎 Recherche : {primary} | Variantes : {variants}")
+            
             result = None
             
-            # 1. Tentative de résolution par entité individuelle (nom ou alias)
+            # 1. Tentative entité individuelle
             for variant in all_variants:
                 result = await _search_entity(conn, variant)
                 
                 if result:
-                    # On vérifie si on n'a pas déjà ajouté cette entité via une autre mention
                     e_id = result["entity_id"]
                     if e_id not in resolved_ids:
+                        match_score = _compute_match_score(variant, result["name"])
                         resolved.append({
                             **result,
                             "match_variant": variant,
-                            "match_score": _compute_match_score(variant, result["name"])
+                            "match_score": match_score
                         })
                         resolved_ids.add(e_id)
-                    break  # Trouvé, on passe à l'entité mentionnée suivante
+                        print(f"      ✅ TROUVÉ : {result['name']} (match: {variant}, score: {match_score:.2f}, chunks: {result['chunk_count']})")
+                    else:
+                        print(f"      ⚠️ Doublon ignoré : {result['name']} (déjà résolu)")
+                    break
             
-            # 2. Si pas trouvé en entité, on cherche dans les tags système (groupes)
+            # 2. Si pas trouvé, cherche tag
             if not result:
                 tag_result = await _search_tag(conn, primary)
                 if tag_result:
@@ -47,19 +53,26 @@ async def resolve_entities_in_query(entities_mentioned: List[Dict]) -> List[Dict
                     if t_id not in resolved_tag_ids:
                         resolved.append(tag_result)
                         resolved_tag_ids.add(t_id)
+                        print(f"      ✅ TAG TROUVÉ : {tag_result['tag_name']} ({len(tag_result['entities'])} entités)")
+                    else:
+                        print(f"      ⚠️ Tag doublon ignoré : {tag_result['tag_name']}")
+                else:
+                    print(f"      ❌ NON TROUVÉ : {primary}")
         
+        print(f"🎯 RÉSULTAT : {len(resolved)} entité(s) résolue(s)")
         return resolved
         
     finally:
         await release_connection(conn)
 
 async def _search_entity(conn, search_term: str) -> Optional[Dict]:
-    """Cherche une entité par nom/alias."""
+    """Cherche via normalized_aliases (optimisé)."""
+    
     normalized = normalize_entity_name(search_term)
     
-    # 1. Match exact sur le nom normalisé (Indexé, très rapide)
+    # 1. Exact match sur normalized_name
     entity = await conn.fetchrow("""
-        SELECT entity_id, name, entity_type, chunk_count
+        SELECT entity_id, name, entity_type, chunk_count, aliases
         FROM entities
         WHERE normalized_name = $1
     """, normalized)
@@ -73,18 +86,16 @@ async def _search_entity(conn, search_term: str) -> Optional[Dict]:
             "chunk_count": entity['chunk_count']
         }
     
-    # 2. Match exact dans la liste des alias
-    # Note: On utilise ANY pour scanner le tableau d'aliases
+    # 2. Match via normalized_aliases (index GIN)
     entities = await conn.fetch("""
-        SELECT entity_id, name, entity_type, chunk_count
+        SELECT entity_id, name, entity_type, chunk_count, aliases
         FROM entities
-        WHERE $1 = ANY(aliases)
-    """, search_term)
-
+        WHERE $1 = ANY(normalized_aliases)
+    """, normalized)
+    
     if entities:
-        # Désambiguïsation : on prend l'entité la plus "importante" (plus de chunks)
+        # Prend celui avec le plus de chunks
         best = max(entities, key=lambda e: e['chunk_count'])
-        
         return {
             "type": "entity",
             "entity_id": str(best['entity_id']),
@@ -94,7 +105,6 @@ async def _search_entity(conn, search_term: str) -> Optional[Dict]:
         }
     
     return None
-
 async def _search_tag(conn, tag_name: str) -> Optional[Dict]:
     """Cherche un tag système et renvoie le groupe d'entités liées."""
     tag = await conn.fetchrow("""

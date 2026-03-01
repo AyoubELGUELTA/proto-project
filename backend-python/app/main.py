@@ -19,6 +19,7 @@ from .embeddings.embedder import vectorize_documents
 from .vector_store.qdrant_service import store_vectors_incrementally
 from .retrieval.retriever import retrieve_chunks
 from .retrieval.answer_generator import generate_answer_with_history
+from .retrieval.entity_resolver import resolve_entities_in_query
 from .retrieval.query_analyzer import analyze_and_rewrite_query, QueryType
 from .utils.chunks_ingest_processor import process_enriched_chunks, split_enriched_chunks
 from .utils.summarize_and_extract_entities import summarise_and_extract_entities
@@ -185,6 +186,10 @@ async def query_rag(question: str, limit: int = 20, config_id: str = "01"):
         entities_mentioned = query_analysis["entities_mentioned"]
         
         print(f"📊 Type: {query_type} | Conf: {confidence:.2f} | Entities: {entities_mentioned}")
+        
+        detected_entities = []
+        if entities_mentioned:
+            detected_entities = await resolve_entities_in_query(entities_mentioned)
         
         # Retrieval (ton code existant)
         # final_context = await retrieve_chunks(

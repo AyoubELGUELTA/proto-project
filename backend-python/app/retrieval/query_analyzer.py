@@ -57,6 +57,8 @@ async def analyze_and_rewrite_query(latest_question: str, chat_history: List) ->
         
         print(f"🔎 QUERY ANALYSIS ACTIVÉE")
         print(f"   V1: {v1}")
+        print(f"   V2: {v2}")
+        print(f"   V3: {v3}")
         print(f"   Type: {data.get('query_type', 'general')} (conf: {data.get('confidence', 0.5):.2f})")
         
         # Log détaillé des entités pour le debug

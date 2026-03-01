@@ -12,7 +12,7 @@ async def store_chunks_batch(chunks: List[Dict[str, Any]], doc_id: str) -> List[
     chunk_ids = []
     
     try:
-        # ✅ Utiliser une transaction explicite
+        # Utiliser une transaction explicite
         async with conn.transaction():
             for i, chunk_data in enumerate(chunks):
                 chunk_id = str(uuid.uuid4())

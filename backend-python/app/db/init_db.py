@@ -84,6 +84,7 @@ async def init_db():
                 name TEXT NOT NULL,                   -- Nom canonique (pas forcément unique si normalization fail)
                 normalized_name TEXT NOT NULL UNIQUE, -- Version normalisée pour matching
                 aliases TEXT[] DEFAULT '{}',          -- Toutes les variantes rencontrées
+                normalized_aliases TEXT[],  
                 entity_type VARCHAR(50),              -- PERSON, CONCEPT, EVENT, PLACE
                 global_summary TEXT,                  -- Master chunk (résumé global)
                 chunk_count INTEGER DEFAULT 0,        -- Nombre de chunks liés
@@ -254,7 +255,11 @@ async def init_db():
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_entities_chunk_count ON entities(chunk_count DESC);
         """)
-        
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_entities_normalized_aliases 
+            ON entities USING GIN (normalized_aliases);
+        """)
+                
         # --- Entity Links ---
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_entity_links_entity ON entity_links(entity_id);
