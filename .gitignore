@@ -41,3 +41,4 @@ npm-debug.log*
 # --- Données du projet ---
 uploads/
 data/pdf/
+*.pdf
