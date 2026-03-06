@@ -21,6 +21,7 @@ from .retrieval.retriever import retrieve_chunks
 from .retrieval.answer_generator import generate_answer_with_history
 from .retrieval.entity_resolver import resolve_entities_in_query
 from .retrieval.query_analyzer import analyze_and_rewrite_query, QueryType
+from .retrieval.strategies import select_strategy, VectorOnlyStrategy
 from .utils.chunks_ingest_processor import process_enriched_chunks, split_enriched_chunks
 from .utils.summarize_and_extract_entities import summarise_and_extract_entities
 
@@ -166,6 +167,7 @@ async def ingest_single_file(file: UploadFile, config_id: str, background_tasks:
     }
 chat_history = []
 
+
 @app.get("/query")
 async def query_rag(question: str, limit: int = 20, config_id: str = "01"):
     global chat_history
@@ -177,7 +179,9 @@ async def query_rag(question: str, limit: int = 20, config_id: str = "01"):
             "prompt_style": "verbose"
         }
         
-        # Analyse complète (rewriting + classification)
+        # ═══════════════════════════════════════════════════════════
+        # ÉTAPE 1 : Analyse (rewriting + classification)
+        # ═══════════════════════════════════════════════════════════
         query_analysis = await analyze_and_rewrite_query(question, chat_history)
         
         standalone_query = query_analysis["vector_query"]
@@ -185,44 +189,83 @@ async def query_rag(question: str, limit: int = 20, config_id: str = "01"):
         confidence = query_analysis["confidence"]
         entities_mentioned = query_analysis["entities_mentioned"]
         
-        print(f"📊 Type: {query_type} | Conf: {confidence:.2f} | Entities: {entities_mentioned}")
+        print(f"📊 Type: {query_type} | Conf: {confidence:.2f}")
         
+        # ═══════════════════════════════════════════════════════════
+        # ÉTAPE 2 : Entity Resolution
+        # ═══════════════════════════════════════════════════════════
         detected_entities = []
         if entities_mentioned:
             detected_entities = await resolve_entities_in_query(entities_mentioned)
         
-        # Retrieval (ton code existant)
-        # final_context = await retrieve_chunks(
-        #     standalone_query,
-        #     limit=config["top_k"],
-        #     rerank_limit=config["top_n"]
-        # )
+        # ═══════════════════════════════════════════════════════════
+        # ÉTAPE 3 : Strategy Selection
+        # ═══════════════════════════════════════════════════════════
+        strategy = select_strategy(query_type, detected_entities, retrieve_chunks)
         
-        # if not final_context:
-        #     return {"answer": "Pas d'infos trouvées.", "sources": []}
+        print(f"🎯 Stratégie : {strategy.__class__.__name__}")
         
-        # # Generation (ton code existant)
-        # answer = await generate_answer_with_history(
-        #     question,
-        #     final_context,
-        #     chat_history,
-        #     style=config["prompt_style"]
-        # )
+        # ═══════════════════════════════════════════════════════════
+        # ÉTAPE 4 : Retrieval via strategy
+        # ═══════════════════════════════════════════════════════════
+        entity_context = await strategy.retrieve({
+        **query_analysis,  # Inclut variants, keyword_query, vector_query, etc.
+        "question": question,
+        "entities": detected_entities
+    })
         
-        # Retour enrichi
+        print(f"📦 Chunks strategy : {len(entity_context)}")
+        
+        # ═══════════════════════════════════════════════════════════
+        # ÉTAPE 5 : Fallback vector si insuffisant 
+        # ═══════════════════════════════════════════════════════════
+        if len(entity_context) < config["top_n"]:
+            needed = config["top_n"] - len(entity_context)
+            print(f"⚠️ Complète avec vector search ({needed} chunks)")
+            
+            # On crée explicitement la stratégie vectorielle pour le fallback
+            vector_strategy = VectorOnlyStrategy(retrieve_chunks)
+            vector_context = await vector_strategy.retrieve(query_analysis)
+            
+            # Déduplique
+            entity_chunk_ids = {c.get('chunk_id') for c in entity_context if c.get('chunk_id')}
+            vector_context = [c for c in vector_context if c.get('chunk_id') not in entity_chunk_ids]
+            
+            final_context = entity_context + vector_context[:needed]
+        else:
+            # Cas où la stratégie a déjà ramené assez de matière
+            final_context = entity_context[:config["top_n"]]
+        
+        # ═══════════════════════════════════════════════════════════
+        # ÉTAPE 6 : Generation
+        # ═══════════════════════════════════════════════════════════
+        answer = await generate_answer_with_history(
+            question,
+            final_context,
+            chat_history,
+            style=config["prompt_style"]
+        )
+        
+        # ═══════════════════════════════════════════════════════════
+        # ÉTAPE 7 : Retour enrichi
+        # ═══════════════════════════════════════════════════════════
         return {
-            # "answer": answer,
+            "answer": answer,
             "standalone_query": standalone_query,
-            "query_type": query_type,              
-            "confidence": confidence,              
-            "entities_detected": entities_mentioned, 
+            "query_type": query_type,
+            "confidence": confidence,
+            "strategy_used": strategy.__class__.__name__,
+            "entities_detected": entities_mentioned,
+            "entities_resolved": detected_entities,
             "config_applied": config_id or "default",
-            # "chunks_count": len([c for c in final_context if not c.get("is_identity")]),
-            # "sources": final_context
+            "chunks_count": len(final_context),
+            "sources": final_context
         }
         
     except Exception as e:
         print(f"❌ Erreur: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
     
     
