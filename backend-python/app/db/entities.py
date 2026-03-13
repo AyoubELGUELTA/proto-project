@@ -239,11 +239,18 @@ async def link_entity_to_chunk(chunk_id: str, extracted_entity: Dict[str, Any]):
                 """, entity_id, uuid.UUID(chunk_id), extracted_entity.get('relevance', 1.0))
                 
                 await link_entity_to_system_tags(entity_id, themes, conn)
+
+            await conn.execute(""" 
+            UPDATE chunks
+            SET processed_for_entities = TRUE
+            WHERE chunk_id = $1
+        """, uuid.UUID(chunk_id)) # Sert de monitoring, voir sur tableplus si tous les chunks ont été link a une entité (ce qui en général devrait etre le cas)
             
     except Exception as e:  
         print(f"❌ Erreur link_entity [{name}]: {e}")
         import traceback
         traceback.print_exc()
+    
     finally:
         await release_connection(conn)
 async def link_entity_to_system_tags(entity_id: str, extracted_themes: List[str], conn):

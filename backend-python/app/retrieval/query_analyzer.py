@@ -175,6 +175,13 @@ Exemples :
   "type": "CONCEPT"
 }
 
+{
+  "primary": "Mères des Croyants",
+  "variants": ["Umm al-Mu'minin", "Mu'minat", "أمهات المؤمنين"],
+  "type": "CONCEPT"
+}
+
+
 Règles :
 - primary : Forme la plus courante en français/arabe
 - variants : 2-3 variantes max (orthographes, noms complets, honorifiques)

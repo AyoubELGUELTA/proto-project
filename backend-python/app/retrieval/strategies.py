@@ -38,6 +38,114 @@ def format_chunk_for_context(chunk_row) -> Dict:
     }
 
 
+
+# Dans strategies.py ou helpers.py
+
+async def calculate_tag_trust_score(tag_id: int, conn) -> Dict:
+    """
+    Calcule le score de confiance d'un tag.
+    
+    Returns:
+        {
+            "trust_score": float,  # 0.0-1.0
+            "reasoning": str,
+            "metrics": {...}
+        }
+    """
+    
+    # ═══════════════════════════════════════════════════════════
+    # Metric 1 : Nombre d'entités liées
+    # ═══════════════════════════════════════════════════════════
+    entities = await conn.fetch("""
+        SELECT entity_id
+        FROM entity_tags
+        WHERE tag_id = $1
+    """, tag_id)
+    
+    nb_entities = len(entities)
+    
+    # Score : 0 si <3, 0.5 si 5, 1.0 si 10+
+    entity_score = min(1.0, nb_entities / 10)
+    
+    # ═══════════════════════════════════════════════════════════
+    # Metric 2 : Coverage docs (entités du tag présentes dans combien de docs ?)
+    # ═══════════════════════════════════════════════════════════
+    if nb_entities > 0:
+        entity_ids = [e['entity_id'] for e in entities]
+        
+        docs = await conn.fetch("""
+            SELECT DISTINCT c.doc_id
+            FROM entity_links el
+            JOIN chunks c ON el.chunk_id = c.chunk_id
+            WHERE el.entity_id = ANY($1::uuid[])
+        """, entity_ids)
+        
+        nb_docs = len(docs)
+        
+        # Score : 0.5 si 1 doc, 1.0 si 3+ docs
+        doc_coverage_score = min(1.0, nb_docs / 3)
+    else:
+        doc_coverage_score = 0.0
+    
+    # ═══════════════════════════════════════════════════════════
+    # Metric 3 : Tag type (système = boost)
+    # ═══════════════════════════════════════════════════════════
+    tag_info = await conn.fetchrow("""
+        SELECT is_system, tag_type
+        FROM tags
+        WHERE tag_id = $1
+    """, tag_id)
+    
+    system_boost = 0.3 if tag_info['is_system'] else 0.0
+    
+    # ═══════════════════════════════════════════════════════════
+    # Metric 4 (optionnel) : Cohérence sémantique des entités
+    # ═══════════════════════════════════════════════════════════
+    # Si toutes les entités du tag ont des types cohérents
+    # Exemple : Tag "Mères" → toutes PERSONNE ✅
+    #          Tag random → mix PERSONNE/LIEU/CONCEPT ❌
+    
+    entity_types = await conn.fetch("""
+        SELECT DISTINCT e.entity_type
+        FROM entities e
+        JOIN entity_tags et ON e.entity_id = et.entity_id
+        WHERE et.tag_id = $1
+    """, tag_id)
+    
+    # Score : 1.0 si 1 seul type, 0.5 si 2 types, 0.0 si 3+
+    nb_types = len(entity_types)
+    coherence_score = max(0.0, 1.0 - (nb_types - 1) * 0.5)
+    
+    # ═══════════════════════════════════════════════════════════
+    # Trust score final (moyenne pondérée)
+    # ═══════════════════════════════════════════════════════════
+    trust_score = (
+        entity_score * 0.3 +          # 30% poids
+        doc_coverage_score * 0.3 +    # 30% poids
+        coherence_score * 0.2 +       # 20% poids
+        system_boost                   # +30% si système
+    )
+    
+    reasoning = f"""
+    Tag trust analysis:
+    - {nb_entities} entities linked (score: {entity_score:.2f})
+    - Present in {nb_docs} document(s) (score: {doc_coverage_score:.2f})
+    - {nb_types} entity type(s) (coherence: {coherence_score:.2f})
+    - System tag: {tag_info['is_system']} (boost: {system_boost:.2f})
+    → Trust score: {trust_score:.2f}
+    """
+    
+    return {
+        "trust_score": trust_score,
+        "reasoning": reasoning,
+        "metrics": {
+            "nb_entities": nb_entities,
+            "nb_docs": nb_docs,
+            "nb_entity_types": nb_types,
+            "is_system": tag_info['is_system']
+        }
+    }
+
 # ═══════════════════════════════════════════════════════════
 # BASE CLASS
 # ═══════════════════════════════════════════════════════════
@@ -278,6 +386,134 @@ class VectorOnlyStrategy(RetrievalStrategy):
         return results
 
 
+
+
+# ═══════════════════════════════════════════════════════════
+# STRATEGY 5 : TagGroupStrategy
+# ═══════════════════════════════════════════════════════════
+
+
+
+
+
+class TagGroupStrategy(RetrievalStrategy):
+    """
+    Retrieval pour questions de type liste/groupe.
+    Utilise metadata tag si trust score > 0.6.
+    """
+
+    async def retrieve(self, query_data: Dict) -> List[Dict]:
+        entities = query_data.get("entities", [])
+        
+        # Vérifie type tag_group
+        if not entities or entities[0].get("type") != "tag_group":
+            return []
+        
+        tag_group = entities[0]
+        tag_id = int(tag_group['tag_id'])
+        
+        conn = await get_connection()
+        try:
+            # ═══════════════════════════════════════════════════════════
+            # Calcule trust score
+            # ═══════════════════════════════════════════════════════════
+            trust_analysis = await calculate_tag_trust_score(tag_id, conn)
+            trust_score = trust_analysis['trust_score']
+            
+            print(f"   🎯 Tag '{tag_group['tag_name']}' trust score: {trust_score:.2f}")
+            # print(trust_analysis['reasoning'])  # Optionnel : verbose
+            
+            # Décision basée sur trust
+            if trust_score < 0.6:
+                print(f"   ⚠️ Trust score trop faible ({trust_score:.2f}), skip metadata")
+                return []
+            
+            # ═══════════════════════════════════════════════════════════
+            # Récupère infos tag pour description
+            # ═══════════════════════════════════════════════════════════
+            tag_info = await conn.fetchrow("""
+                SELECT description, is_system, tag_type
+                FROM tags
+                WHERE tag_id = $1
+            """, tag_id)
+            
+            entity_list = tag_group["entities"]
+            
+            # ═══════════════════════════════════════════════════════════
+            # Metadata block : Liste COMPLÈTE
+            # ═══════════════════════════════════════════════════════════
+            
+            entities_text = "\n".join([
+                f"{i+1}. {e['name']} ({e['chunk_count']} extraits disponibles)"
+                for i, e in enumerate(entity_list)
+            ])
+            
+            metadata_block = {
+                "chunk_id": f"metadata_tag_{tag_id}",
+                "text_for_reranker": f"""[TAXONOMIE STRUCTURÉE]
+
+                Catégorie : {tag_group['tag_name']}
+                Description : {tag_info['description'] or "Groupe d'entités reliées"}
+                Fiabilité : {trust_score:.0%} (basé sur {trust_analysis['metrics']['nb_entities']} entités, {trust_analysis['metrics']['nb_docs']} document(s))
+
+                === LISTE EXHAUSTIVE ({len(entity_list)} éléments) ===
+
+                {entities_text}
+
+                ─────────────────────────────────────────────────────
+                Note méthodologique :
+                Cette liste provient de la base de connaissances structurée.
+                Les extraits de documents ci-dessous apportent le contexte narratif et les détails de chaque élément.
+                Pour une réponse complète, combine cette liste avec les informations textuelles fournies.
+                ─────────────────────────────────────────────────────""",
+                "source": "tag_metadata",
+                "relevance_score": trust_score,
+                "is_identity": False,
+                "heading_full": f"Taxonomie : {tag_group['tag_name']}",
+                "page_numbers": [],
+                "visual_summary": "",
+                "tables": [],
+                "images_urls": []
+            }
+            
+            # ═══════════════════════════════════════════════════════════
+            # Chunks contextuels (2 par entité, top 5 entités)
+            # ═══════════════════════════════════════════════════════════
+            
+            context_chunks = []
+            
+            for entity in entity_list[:min(5, len(entity_list))]:
+                chunks = await conn.fetch("""
+                    SELECT 
+                        c.chunk_id,
+                        c.chunk_text,
+                        c.chunk_heading_full,
+                        c.chunk_page_numbers,
+                        c.chunk_visual_summary,
+                        c.chunk_tables,
+                        c.chunk_images_urls,
+                        el.relevance_score
+                    FROM entity_links el
+                    JOIN chunks c ON el.chunk_id = c.chunk_id
+                    WHERE el.entity_id = $1
+                    ORDER BY el.relevance_score DESC
+                    LIMIT 2
+                """, uuid.UUID(entity['entity_id']))
+                
+                for chunk in chunks:
+                    formatted = format_chunk_for_context(chunk)
+                    formatted["source"] = "tag_context"
+                    context_chunks.append(formatted)
+            
+            print(f"   📋 Tag metadata : {len(entity_list)} entités")
+            print(f"   📄 Context chunks : {len(context_chunks)} extraits")
+            
+            # Metadata FIRST, puis chunks
+            return [metadata_block] + context_chunks
+            
+        finally:
+            await release_connection(conn)
+
 # ═══════════════════════════════════════════════════════════
 # STRATEGY SELECTOR
 # ═══════════════════════════════════════════════════════════
@@ -294,6 +530,10 @@ def select_strategy(query_type: str, entities: List[Dict], retrieve_chunks_func)
     Returns:
         Instance de RetrievalStrategy
     """
+     # Tag group détecté 
+    if entities[0].get("type") == "tag_group":
+        print(f"   🎯 Stratégie : TagGroupStrategy (tag détecté)")
+        return TagGroupStrategy()
     
     # Pas d'entités → Vector only
     if not entities:

@@ -40,7 +40,9 @@ async def resolve_entities_in_query(entities_mentioned: List[Dict]) -> List[Dict
                             "match_score": match_score
                         })
                         resolved_ids.add(e_id)
-                        print(f"      ✅ TROUVÉ : {result['name']} (match: {variant}, score: {match_score:.2f}, chunks: {result['chunk_count']})")
+                        
+                        # ✅ Logging amélioré avec match_type
+                        print(f"      ✅ TROUVÉ : {result['name']} (match: {variant}, type: {result.get('match_type', 'N/A')}, score: {result.get('match_score', 0):.2f}, chunks: {result['chunk_count']})")
                     else:
                         print(f"      ⚠️ Doublon ignoré : {result['name']} (déjà résolu)")
                     break
@@ -66,13 +68,22 @@ async def resolve_entities_in_query(entities_mentioned: List[Dict]) -> List[Dict
         await release_connection(conn)
 
 async def _search_entity(conn, search_term: str) -> Optional[Dict]:
-    """Cherche via normalized_aliases (optimisé)."""
+    """
+    Cherche une entité avec scoring pondéré.
+    
+    Priorités :
+    1. Exact match normalized_name (score 1.0)
+    2. Substring match normalized_name (score 0.8)
+    3. Alias match normalized_aliases (score 0.6)
+    """
     
     normalized = normalize_entity_name(search_term)
     
-    # 1. Exact match sur normalized_name
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 1 : Exact match normalized_name (priorité absolue)
+    # ═══════════════════════════════════════════════════════════
     entity = await conn.fetchrow("""
-        SELECT entity_id, name, entity_type, chunk_count, aliases
+        SELECT entity_id, name, entity_type, chunk_count, aliases, normalized_name
         FROM entities
         WHERE normalized_name = $1
     """, normalized)
@@ -83,38 +94,156 @@ async def _search_entity(conn, search_term: str) -> Optional[Dict]:
             "entity_id": str(entity['entity_id']),
             "name": entity['name'],
             "entity_type": entity['entity_type'],
-            "chunk_count": entity['chunk_count']
+            "chunk_count": entity['chunk_count'],
+            "match_type": "exact",
+            "match_score": 1.0
         }
     
-    # 2. Match via normalized_aliases (index GIN)
-    entities = await conn.fetch("""
-        SELECT entity_id, name, entity_type, chunk_count, aliases
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 2 : Substring match normalized_name
+    # ═══════════════════════════════════════════════════════════
+    # "khadija" in "khadija bint khuwaylid" 
+    substring_matches = await conn.fetch("""
+        SELECT entity_id, name, entity_type, chunk_count, aliases, normalized_name
+        FROM entities
+        WHERE normalized_name LIKE '%' || $1 || '%'
+           OR $1 LIKE '%' || normalized_name || '%'
+    """, normalized)
+    
+    # ═══════════════════════════════════════════════════════════
+    # ÉTAPE 3 : Alias match normalized_aliases
+    # ═══════════════════════════════════════════════════════════
+    alias_matches = await conn.fetch("""
+        SELECT entity_id, name, entity_type, chunk_count, aliases, normalized_name, normalized_aliases
         FROM entities
         WHERE $1 = ANY(normalized_aliases)
     """, normalized)
     
-    if entities:
-        # Prend celui avec le plus de chunks
-        best = max(entities, key=lambda e: e['chunk_count'])
-        return {
-            "type": "entity",
-            "entity_id": str(best['entity_id']),
-            "name": best['name'],
-            "entity_type": best['entity_type'],
-            "chunk_count": best['chunk_count']
-        }
+    # ═══════════════════════════════════════════════════════════
+    # FUSION & SCORING
+    # ═══════════════════════════════════════════════════════════
+    all_candidates = []
     
-    return None
-async def _search_tag(conn, tag_name: str) -> Optional[Dict]:
-    """Cherche un tag système et renvoie le groupe d'entités liées."""
-    tag = await conn.fetchrow("""
-        SELECT tag_id, name FROM system_tags
-        WHERE name ILIKE $1
-    """, f"%{tag_name}%")
+    # Ajoute substring matches (score 0.8)
+    for entity in substring_matches:
+        all_candidates.append({
+            "entity_id": str(entity['entity_id']),
+            "name": entity['name'],
+            "entity_type": entity['entity_type'],
+            "chunk_count": entity['chunk_count'],
+            "match_type": "substring",
+            "match_score": 0.8,
+            "normalized_name": entity['normalized_name']
+        })
     
-    if not tag:
+    # Ajoute alias matches (score 0.6)
+    for entity in alias_matches:
+        # Vérifie si déjà dans candidates (via substring)
+        entity_id = str(entity['entity_id'])
+        if not any(c['entity_id'] == entity_id for c in all_candidates):
+            all_candidates.append({
+                "entity_id": entity_id,
+                "name": entity['name'],
+                "entity_type": entity['entity_type'],
+                "chunk_count": entity['chunk_count'],
+                "match_type": "alias",
+                "match_score": 0.6,
+                "normalized_name": entity['normalized_name']
+            })
+    
+    # ═══════════════════════════════════════════════════════════
+    # TRI : score DESC, puis chunk_count DESC
+    # ═══════════════════════════════════════════════════════════
+    if not all_candidates:
         return None
     
+    # Trie par priorité : match_score d'abord, puis chunk_count
+    all_candidates.sort(
+        key=lambda x: (x['match_score'], x['chunk_count']),
+        reverse=True
+    )
+    
+    best_match = all_candidates[0]
+    
+    # Retourne le meilleur candidat
+    return {
+        "type": "entity",
+        "entity_id": best_match['entity_id'],
+        "name": best_match['name'],
+        "entity_type": best_match['entity_type'],
+        "chunk_count": best_match['chunk_count'],
+        "match_type": best_match['match_type'],
+        "match_score": best_match['match_score']
+    }
+
+
+async def _search_tag(conn, tag_name: str) -> Optional[Dict]:
+    """
+    Cherche tag avec normalization (comme entities).
+    
+    Stratégies :
+    1. Label exact (normalized)
+    2. Substring label (normalized)
+    3. Normalized aliases match (GIN index, rapide)
+    """
+    
+    normalized_search = normalize_entity_name(tag_name)
+    
+    # ═══════════════════════════════════════════════════════════
+    # 1. Match exact sur label normalisé
+    # ═══════════════════════════════════════════════════════════
+    tag = await conn.fetchrow("""
+        SELECT tag_id, label, aliases, is_system, normalized_aliases
+        FROM tags
+        WHERE LOWER(label) = $1
+    """, normalized_search)
+    
+    if tag:
+        print(f"      ✅ TAG exact match: {tag['label']}")
+        return await build_tag_result(tag, conn)
+    
+    # ═══════════════════════════════════════════════════════════
+    # 2. Substring match label normalisé
+    # ═══════════════════════════════════════════════════════════
+    # "meres croyants" in "meres des croyants"
+    tags = await conn.fetch("""
+        SELECT tag_id, label, aliases, is_system, normalized_aliases
+        FROM tags
+    """)
+    
+    for tag in tags:
+        label_norm = normalize_entity_name(tag['label'])
+        if normalized_search in label_norm or label_norm in normalized_search:
+            print(f"      ✅ TAG substring match: {tag['label']}")
+            return await build_tag_result(tag, conn)
+    
+    # ═══════════════════════════════════════════════════════════
+    # 3. Match dans normalized_aliases (GIN index, rapide)
+    # ═══════════════════════════════════════════════════════════
+    tag = await conn.fetchrow("""
+        SELECT tag_id, label, aliases, is_system, normalized_aliases
+        FROM tags
+        WHERE $1 = ANY(normalized_aliases)
+    """, normalized_search)
+    
+    if tag:
+        # Trouve quel alias a matché
+        matched_alias = None
+        if tag['aliases']:
+            for alias in tag['aliases']:
+                if normalize_entity_name(alias) == normalized_search:
+                    matched_alias = alias
+                    break
+        
+        print(f"      ✅ TAG alias match: {tag['label']} (via '{matched_alias or 'normalized'}')")
+        return await build_tag_result(tag, conn)
+    
+    # Pas trouvé
+    return None
+
+
+async def build_tag_result(tag, conn):
+    """Helper construction résultat tag."""
     entities = await conn.fetch("""
         SELECT e.entity_id, e.name, e.chunk_count
         FROM entities e
@@ -124,7 +253,7 @@ async def _search_tag(conn, tag_name: str) -> Optional[Dict]:
     
     return {
         "type": "tag_group",
-        "tag_name": tag['name'],
+        "tag_name": tag['label'],
         "tag_id": str(tag['tag_id']),
         "entities": [
             {

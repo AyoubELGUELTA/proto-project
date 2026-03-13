@@ -64,17 +64,17 @@ async def init_db():
         # ============================================================
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS tags (
-                tag_id SERIAL PRIMARY KEY,
+                tag_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 label TEXT NOT NULL UNIQUE,
-                tag_type VARCHAR(50) DEFAULT 'auto',  -- 'taxonomy' (système) ou 'auto' (généré)
-                parent_id INTEGER REFERENCES tags(tag_id) ON DELETE SET NULL,
+                tag_type VARCHAR(50) DEFAULT 'auto',
+                parent_id UUID REFERENCES tags(tag_id) ON DELETE SET NULL, -- Correction type UUID
                 description TEXT,
-                is_system BOOLEAN DEFAULT FALSE,      -- Tag prédéfini vs auto-généré
-                embedding vector(1024),               -- Pour matching sémantique
+                is_system BOOLEAN DEFAULT FALSE,
+                normalized_aliases TEXT[] DEFAULT ARRAY[]::TEXT[], -- La nouvelle colonne
+                embedding vector(1024),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-
         # ============================================================
         # 5. TABLE ENTITIES (ENRICHIE)
         # ============================================================
@@ -131,10 +131,9 @@ async def init_db():
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS entity_tags (
                 entity_id UUID REFERENCES entities(entity_id) ON DELETE CASCADE,
-                tag_id INTEGER REFERENCES tags(tag_id) ON DELETE CASCADE,
-                confidence FLOAT DEFAULT 1.0,         -- Si assignation automatique
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (entity_id, tag_id)
+                tag_id UUID REFERENCES system_tags(tag_id) ON DELETE CASCADE,
+                PRIMARY KEY (entity_id, tag_id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
 
@@ -236,6 +235,15 @@ async def init_db():
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_tags_label_fts ON tags 
             USING gin(to_tsvector('french', label));
+        """)
+        # Index GIN pour la recherche rapide dans les tableaux d'aliases (tags et entités)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tags_normalized_aliases ON tags USING GIN (normalized_aliases);
+        """)
+        
+        # Index sur le label pour les recherches textuelles classiques
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tags_label_trgm ON tags USING gin (label gin_trgm_ops);
         """)
         
         # --- Entities ---
