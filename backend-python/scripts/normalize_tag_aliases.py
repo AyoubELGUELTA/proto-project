@@ -1,6 +1,3 @@
-
-# scripts/normalize_tag_aliases.py
-
 import asyncio
 from app.db.base import get_connection, release_connection
 from app.db.entities import normalize_entity_name

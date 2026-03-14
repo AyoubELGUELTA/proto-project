@@ -8,6 +8,7 @@ import json
 import re
 from typing import Dict, List, Any
 from .answer_generator import call_gpt_4o_mini
+from app.core.tags_store import TagsStore
 
 class QueryType:
     """Types de questions identifiées"""
@@ -98,7 +99,8 @@ def _fallback_result(question: str) -> Dict[str, Any]:
     }
 
 def get_system_instruction_analyzer():
-    return """
+    tags_context = TagsStore.get_prompt_context()
+    return f"""
 Tu es un expert en ingénierie de la connaissance islamique et académique générale, et en optimisation de recherche RAG.
 
 ═══════════════════════════════════════════════════════════════════════
@@ -149,43 +151,44 @@ f) general : Question large sans focus précis
 EXTRACTION COMPLÉMENTAIRE
 ═══════════════════════════════════════════════════════════════════════
 
-entities_mentioned : Pour chaque entité détectée, fournis un objet structuré :
-{
-  "primary": "Nom le plus courant/connu",
-  "variants": ["Variante orthographique", "Nom complet", "Forme courte"],
-  "type": "PERSONNE|LIEU|CONCEPT|EVENEMENT"
-}
+TYPES D'EXTRACTION :
 
-Exemples :
-{
-  "primary": "Umm Salama",
-  "variants": ["Um Salama", "Hind bint Abu Umayya", "Hind"],
-  "type": "PERSONNE"
-}
+1. GROUPES/CATÉGORIES (priorité haute) :
+   Si la question demande une LISTE, un ENSEMBLE, ou mentionne un GROUPE connu :
+   → Extrait le nom du groupe comme entité de type CONCEPT
+   
+   Groupes disponibles dans le système :
+{tags_context}
 
-{
-  "primary": "Khadija",
-  "variants": ["Khadija bint Khuwaylid", "Khadijah", "Khadija (ra)"],
-  "type": "PERSONNE"
-}
+   Exemples :
+   - "Quelles sont les Mères des Croyants ?" 
+     → {{"name": "Mères des Croyants", "type": "CONCEPT", "variants": ["Umm al-Mu'minin", "أمهات المؤمنين"]}}
+   
+   - "Liste des Compagnons"
+     → {{"name": "Compagnons", "type": "CONCEPT", "variants": ["Sahaba", "أصحاب"]}}
+   
+   - "Quels sont les piliers de l'Islam ?"
+     → {{"name": "Piliers de l'Islam", "type": "CONCEPT", "variants": ["Arkan al-Islam"]}}
 
-{
-  "primary": "Hajj",
-  "variants": ["حج", "Pèlerinage", "Hadj"],
-  "type": "CONCEPT"
-}
+2. ENTITÉS INDIVIDUELLES (si pas de groupe détecté) :
+   Personnes, lieux, événements spécifiques mentionnés.
 
-{
-  "primary": "Mères des Croyants",
-  "variants": ["Umm al-Mu'minin", "Mu'minat", "أمهات المؤمنين"],
-  "type": "CONCEPT"
-}
+═══════════════════════════════════════════════════════════
+RÈGLES IMPORTANTES :
 
+1. PRIORISE les groupes/catégories sur les individus
+   - "Mères des Croyants" > "Khadija" ou "Aïcha"
+   - "Compagnons" > "Abu Bakr" ou "Umar"
 
-Règles :
-- primary : Forme la plus courante en français/arabe
-- variants : 2-3 variantes max (orthographes, noms complets, honorifiques)
-- type : PERSONNE pour individus, LIEU pour géographie, CONCEPT pour des termes, EVENEMENT pour faits historiques
+2. Si question demande "Quelles/Quels/Liste/Énumère" :
+   → Cherche TOUJOURS un groupe/catégorie d'abord
+
+3. Termes français en primary :
+   - primary: "Mères des Croyants" (PAS "Umm al-Mu'minin")
+   - variants: ["Umm al-Mu'minin", "أمهات المؤمنين"]
+
+4. Si individus mentionnés DANS contexte d'un groupe :
+   → Extrait SEULEMENT le groupe, pas les individus
 
 ═══════════════════════════════════════════════════════════════════════
 FORMAT DE SORTIE (JSON STRICT)
@@ -211,3 +214,4 @@ Réponds UNIQUEMENT avec ce JSON (aucun texte avant ou après) :
   "reasoning": "Explication courte"
 }
 """
+

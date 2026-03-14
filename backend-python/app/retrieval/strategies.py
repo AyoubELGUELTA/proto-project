@@ -41,7 +41,7 @@ def format_chunk_for_context(chunk_row) -> Dict:
 
 # Dans strategies.py ou helpers.py
 
-async def calculate_tag_trust_score(tag_id: int, conn) -> Dict:
+async def calculate_tag_trust_score(tag_id: uuid.UUID, conn) -> Dict:
     """
     Calcule le score de confiance d'un tag.
     
@@ -410,7 +410,7 @@ class TagGroupStrategy(RetrievalStrategy):
             return []
         
         tag_group = entities[0]
-        tag_id = int(tag_group['tag_id'])
+        tag_id = uuid.UUID(tag_group['tag_id'])  
         
         conn = await get_connection()
         try:
@@ -449,23 +449,23 @@ class TagGroupStrategy(RetrievalStrategy):
             ])
             
             metadata_block = {
-                "chunk_id": f"metadata_tag_{tag_id}",
+                "chunk_id": f"metadata_tag_{str(tag_id)}",
                 "text_for_reranker": f"""[TAXONOMIE STRUCTURÉE]
 
-                Catégorie : {tag_group['tag_name']}
-                Description : {tag_info['description'] or "Groupe d'entités reliées"}
-                Fiabilité : {trust_score:.0%} (basé sur {trust_analysis['metrics']['nb_entities']} entités, {trust_analysis['metrics']['nb_docs']} document(s))
+    Catégorie : {tag_group['tag_name']}
+    Description : {tag_info['description'] or "Groupe d'entités reliées"}
+    Fiabilité : {trust_score:.0%} (basé sur {trust_analysis['metrics']['nb_entities']} entités, {trust_analysis['metrics']['nb_docs']} document(s))
 
-                === LISTE EXHAUSTIVE ({len(entity_list)} éléments) ===
+    === LISTE EXHAUSTIVE ({len(entity_list)} éléments) ===
 
-                {entities_text}
+    {entities_text}
 
-                ─────────────────────────────────────────────────────
-                Note méthodologique :
-                Cette liste provient de la base de connaissances structurée.
-                Les extraits de documents ci-dessous apportent le contexte narratif et les détails de chaque élément.
-                Pour une réponse complète, combine cette liste avec les informations textuelles fournies.
-                ─────────────────────────────────────────────────────""",
+    ─────────────────────────────────────────────────────
+    Note méthodologique :
+    Cette liste provient de la base de connaissances structurée.
+    Les extraits de documents ci-dessous apportent le contexte narratif et les détails de chaque élément.
+    Pour une réponse complète, combine cette liste avec les informations textuelles fournies.
+    ─────────────────────────────────────────────────────""",
                 "source": "tag_metadata",
                 "relevance_score": trust_score,
                 "is_identity": False,
@@ -479,7 +479,6 @@ class TagGroupStrategy(RetrievalStrategy):
             # ═══════════════════════════════════════════════════════════
             # Chunks contextuels (2 par entité, top 5 entités)
             # ═══════════════════════════════════════════════════════════
-            
             context_chunks = []
             
             for entity in entity_list[:min(5, len(entity_list))]:

@@ -14,7 +14,7 @@ from .ingestion.create_identity_chunk import create_identity_chunk
 from .db import (init_db, seed_system_tags, get_documents, get_or_create_document, store_chunks_batch, store_identity_chunk, 
                 fetch_identities_by_doc_ids, get_chunk_with_metadata, 
                 update_chunks_with_ai_data, link_entity_to_chunk, resolve_entity, finalize_entity_graph)
-
+from app.db.base import get_connection, release_connection
 from .embeddings.embedder import vectorize_documents
 from .vector_store.qdrant_service import store_vectors_incrementally
 from .retrieval.retriever import retrieve_chunks
@@ -24,7 +24,8 @@ from .retrieval.query_analyzer import analyze_and_rewrite_query, QueryType
 from .retrieval.strategies import select_strategy, VectorOnlyStrategy
 from .utils.chunks_ingest_processor import process_enriched_chunks, split_enriched_chunks
 from .utils.summarize_and_extract_entities import summarise_and_extract_entities
-
+from app.core.tags_store import TagsStore
+from contextlib import asynccontextmanager
 
 from .benchmark_test import get_benchmark_config_rag, get_ingest_benchmark_config
 import aiofiles 
@@ -46,19 +47,54 @@ os.environ["PYTHONUTF8"] = "1"
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-@app.on_event("startup")
-async def startup_event():
-    print("🚀 Starting up FastAPI...")
-    try:
-        await init_db()
-        await seed_system_tags()
-        print("✅ Database tables are ready.")
-    except Exception as e:
-        print(f"❌ Failed to initialize database on startup: {e}")
+
 
 @app.get("/") #allows to check if nodejs commuicate or not with fastapi, health check nothing more
 def read_root():
     return {"status": "ok", "message": "FastAPI is hungry for PDFs"}
+# app/main.py
+
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Gestionnaire de cycle de vie unique (Boot & Shutdown).
+    Remplace avantageusement les anciens @app.on_event.
+    """
+    print("🚀 [BOOT] Initialisation du système...")
+    
+    try:
+        # 1. Initialisation des tables (si nécessaire)
+        await init_db()
+        print("✅ DB: Tables synchronisées.")
+
+        # 2. Seeding des tags système (Jour 1-2 de ton plan)
+        await seed_system_tags()
+        print("✅ DB: Tags système vérifiés/insérés.")
+
+        # 3. Chargement du cache de Tags pour le Query Analyzer
+        conn = await get_connection()
+        try:
+            tags = await conn.fetch("""
+                SELECT label, description 
+                FROM tags 
+                WHERE is_system = TRUE
+            """)
+            TagsStore.set_tags(tags)
+            print(f"🚀 CACHE: {len(tags)} tags chargés en RAM.")
+        finally:
+            await release_connection(conn)
+
+    except Exception as e:
+        print(f"❌ [CRITICAL] Échec du boot : {e}")
+        # En production, on pourrait lever une erreur ici pour empêcher le serveur de démarrer mal configuré
+    
+    yield  # L'application tourne et accepte des requêtes
+
+    # --- PHASE SHUTDOWN ---
+    print("🛑 [SHUTDOWN] Nettoyage des ressources...")
+
 
 @app.get("/ingested-documents")
 async def list_documents():
