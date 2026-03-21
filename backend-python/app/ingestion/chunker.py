@@ -19,7 +19,7 @@ class ImgAnnotationSerializerProvider(ChunkingSerializerProvider):
             picture_serializer=MarkdownPictureSerializer(),
         )
     
-def get_chunker(max_tokens: int = 1100):
+def get_chunker(max_tokens: int = 800, overlap_tokens=150,):
     """Cache le chunker pour éviter de recharger le tokenizer"""
     
     hf_tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3", trust_remote_code=True)
@@ -33,10 +33,11 @@ def get_chunker(max_tokens: int = 1100):
         merge_peers=True,
         serializer_provider=ImgAnnotationSerializerProvider(),
         max_tokens = max_tokens,
-        enforce_max_tokens=True
+        enforce_max_tokens=True,
+        overlap_tokens=overlap_tokens
     )
 
-def create_chunks(doc, max_tokens: int = 1200):
+def create_chunks(doc, max_tokens: int = 800):
     """
     Découpe le document en respectant la hiérarchie (Layout-Aware).
     """

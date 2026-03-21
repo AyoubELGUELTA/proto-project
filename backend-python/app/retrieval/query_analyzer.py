@@ -190,13 +190,27 @@ RÈGLES IMPORTANTES :
 4. Si individus mentionnés DANS contexte d'un groupe :
    → Extrait SEULEMENT le groupe, pas les individus
 
+5. RÈGLE D'OR : UNITÉ DES NOMS ARABES
+- Les noms avec filiation (ibn, bin, bint, abd, al) doivent former UNE SEULE entité.
+- NE SÉPARE JAMAIS le nom de sa filiation.
+
+✅ CORRECT : 
+- "Aïcha bint Abi Bakr" (1 seule entité)
+- "Sumayya bint al-Harith" (1 seule entité)
+- "Abd Allah ibn Mas'ud" (1 seule entité)
+
+❌ INTERDIT :
+- "Aïcha" + "Abi Bakr" (Séparer le père de la fille pollue la base)
+- "Sumayya" + "al-Harith"
+- "Abd" + "Allah"
+
 ═══════════════════════════════════════════════════════════════════════
 FORMAT DE SORTIE (JSON STRICT)
 ═══════════════════════════════════════════════════════════════════════
 
 Réponds UNIQUEMENT avec ce JSON (aucun texte avant ou après) :
 
-{
+{{
   "v1": "Reformulation fidèle",
   "v2": "Reformulation contextuelle",
   "v3": "Reformulation technique arabe",
@@ -204,14 +218,13 @@ Réponds UNIQUEMENT avec ce JSON (aucun texte avant ou après) :
   "query_type": "entity_overview|relationship|temporal|concept|comparison|general",
   "confidence": 0.0-1.0,
   "entities_mentioned": [
-    {
-      "primary": "Nom principal",
+    {{
+      "primary": "Nom COMPLET (ex: 'Aïcha bint Abi Bakr', JAMAIS 'Aïcha' seule si la filiation est connue)",
       "variants": ["Variante1", "Variante2"],
       "type": "PERSONNE|LIEU|CONCEPT|EVENEMENT"
-    }
+    }}
   ],
   "temporal_indicators": ["quand", "avant"],
   "reasoning": "Explication courte"
-}
+}}
 """
-

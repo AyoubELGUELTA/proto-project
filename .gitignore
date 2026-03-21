@@ -17,6 +17,9 @@ backend-python/venv/
 node_modules/
 **/node_modules/
 
+**/venv_graphrag
+**/.venv_graphrag/
+
 
 # --- Docker & DB ---
 qdrant_data/

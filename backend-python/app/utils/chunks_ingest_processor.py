@@ -3,23 +3,30 @@ from .s3_storage import storage
 from ..ingestion.separate_content_types import separate_content_types 
 import re
 
+from transformers import AutoTokenizer
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter 
+
 def split_enriched_chunks(enriched_chunks: List[Dict], max_tokens=1200, overlap=150) -> List[Dict]:
     final_list = []
     title_counters = {}
+    tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-m3")
 
     for original in enriched_chunks:
         text = original['text']
         base_title = original['heading_full']
         
-        if base_title not in title_counters:
+        if base_title not in title_counters:        
             title_counters[base_title] = 0
         
+        actual_tokens = len(tokenizer.encode(text))
 
+        if actual_tokens <= max_tokens: #Si notre chunk est deja assez petit, en le store directement sans rien faire...
+            final_list.append(original)
+            continue
         splitter = RecursiveCharacterTextSplitter(
-            chunk_size=max_tokens * 3.5,  
-            chunk_overlap=overlap * 3.5,  
+            chunk_size=max_tokens * 3,  
+            chunk_overlap=overlap * 3,  
             separators=["\n\n", "\n", "|", ". ", " ", ""],
             keep_separator=True
         )

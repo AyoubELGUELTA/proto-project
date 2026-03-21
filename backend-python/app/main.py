@@ -11,7 +11,7 @@ from typing import List
 from .ingestion.pdf_loader import partition_document
 from .ingestion.chunker import create_chunks
 from .ingestion.create_identity_chunk import create_identity_chunk
-from .db import (init_db, seed_system_tags, get_documents, get_or_create_document, store_chunks_batch, store_identity_chunk, 
+from .db import (init_db, get_documents, get_or_create_document, store_chunks_batch, store_identity_chunk, 
                 fetch_identities_by_doc_ids, get_chunk_with_metadata, 
                 update_chunks_with_ai_data, link_entity_to_chunk, resolve_entity, finalize_entity_graph)
 from app.db.base import get_connection, release_connection
@@ -69,11 +69,8 @@ async def lifespan(app: FastAPI):
         await init_db()
         print("✅ DB: Tables synchronisées.")
 
-        # 2. Seeding des tags système (Jour 1-2 de ton plan)
-        await seed_system_tags()
-        print("✅ DB: Tags système vérifiés/insérés.")
-
-        # 3. Chargement du cache de Tags pour le Query Analyzer
+        
+        # 2. Chargement du cache de Tags pour le Query Analyzer
         conn = await get_connection()
         try:
             tags = await conn.fetch("""

@@ -529,16 +529,18 @@ def select_strategy(query_type: str, entities: List[Dict], retrieve_chunks_func)
     Returns:
         Instance de RetrievalStrategy
     """
+     # Pas d'entités → Vector only
+    if not entities:
+        print(f"   🎯 Stratégie : VectorOnlyStrategy (aucune entité)")
+        return VectorOnlyStrategy(retrieve_chunks_func)
+    
+    
      # Tag group détecté 
     if entities[0].get("type") == "tag_group":
         print(f"   🎯 Stratégie : TagGroupStrategy (tag détecté)")
         return TagGroupStrategy()
     
-    # Pas d'entités → Vector only
-    if not entities:
-        print(f"   🎯 Stratégie : VectorOnlyStrategy (aucune entité)")
-        return VectorOnlyStrategy(retrieve_chunks_func)
-    
+   
     # 1 entité + entity_overview → Summary si disponible
     if query_type == "entity_overview" and len(entities) == 1:
         print(f"   🎯 Stratégie : EntitySummaryStrategy (1 entité)")

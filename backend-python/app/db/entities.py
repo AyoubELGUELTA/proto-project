@@ -120,8 +120,6 @@ async def link_entity_to_chunk(chunk_id: str, extracted_entity: Dict[str, Any]):
     name = extracted_entity['name']
     aliases = extracted_entity.get('aliases', [])
     entity_type = extracted_entity.get('type', 'CONCEPT')
-    themes = extracted_entity.get('themes', [])
-
     try:
         async with conn.transaction():
             # 1. Tentative de résolution
@@ -238,7 +236,9 @@ async def link_entity_to_chunk(chunk_id: str, extracted_entity: Dict[str, Any]):
                     ON CONFLICT (entity_id, chunk_id) DO NOTHING;
                 """, entity_id, uuid.UUID(chunk_id), extracted_entity.get('relevance', 1.0))
                 
-                await link_entity_to_system_tags(entity_id, themes, conn)
+                # Récupération du tag suggéré par le LLM
+                suggested = extracted_entity.get('suggested_tag')
+                await link_entity_to_system_tags(entity_id, suggested, conn)
 
             await conn.execute(""" 
             UPDATE chunks
@@ -253,42 +253,29 @@ async def link_entity_to_chunk(chunk_id: str, extracted_entity: Dict[str, Any]):
     
     finally:
         await release_connection(conn)
-async def link_entity_to_system_tags(entity_id: str, extracted_themes: List[str], conn):
+
+
+async def link_entity_to_system_tags(entity_id: int, suggested_tag_label: str, conn):
     """
-    Lie une entité aux tags système via matching textuel.
+    LE GATEKEEPER : Lie l'entité au tag système suggéré par le LLM
+    après vérification de l'existence du tag.
     """
-    if not extracted_themes:
+    if not suggested_tag_label:
         return
-    
-    system_tags = await conn.fetch("""
-        SELECT tag_id, label FROM tags WHERE is_system = TRUE
-    """)
-    
-    for theme in extracted_themes:
-        normalized_theme = normalize_entity_name(theme)
-        
-        best_match = None
-        max_similarity = 0
-        
-        for tag in system_tags:
-            normalized_tag = normalize_entity_name(tag['label'])
-            
-            # Matching simple par mots communs
-            if normalized_theme in normalized_tag or normalized_tag in normalized_theme:
-                theme_words = set(normalized_theme.split())
-                tag_words = set(normalized_tag.split())
-                similarity = len(theme_words & tag_words)
-                
-                if similarity > max_similarity:
-                    max_similarity = similarity
-                    best_match = tag['tag_id']
-        
-        if best_match:
-            await conn.execute("""
-                INSERT INTO entity_tags (entity_id, tag_id, confidence)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (entity_id, tag_id) DO NOTHING
-            """, entity_id, best_match, 0.8)
+
+    # On cherche le tag par son label exact (puisque le LLM choisit dans la liste)
+    tag = await conn.fetchrow("""
+        SELECT tag_id FROM tags 
+        WHERE label = $1 AND is_system = TRUE
+    """, suggested_tag_label)
+
+    if tag:
+        await conn.execute("""
+            INSERT INTO entity_tags (entity_id, tag_id, confidence)
+            VALUES ($1, $2, 0.9)
+            ON CONFLICT (entity_id, tag_id) DO NOTHING
+        """, entity_id, tag['tag_id'])
+        print(f"    🔗 Tag lié : {suggested_tag_label}")
 
 async def generate_global_summaries_for_document(doc_id: str):
     """

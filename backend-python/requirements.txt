@@ -16,7 +16,17 @@ boto3
 Pillow
 aiofiles
 
-# --- LangChain ---
+# -- Llama-landex 'n graph-related dependecies --
+
+llama-index-core
+llama-index-graph-stores-neo4j
+neo4j
+llama-index-llms-openai
+
+# Pour le nettoyage NER avancé
+gliner
+
+# --- LangChain --- INUTILE ??
 langchain>=0.3.0
 langchain-core>=0.3.0
 langchain-community==0.3.0

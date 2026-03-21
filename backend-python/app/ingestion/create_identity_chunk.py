@@ -43,10 +43,10 @@ async def create_identity_chunk(
     
     try:
         response = await client.chat.completions.create(
-            model="gpt-4.1-nano-2025-04-14",
+            model="gpt-4o-mini-2024-07-18",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.02,  # Basse température pour cohérence
-            max_tokens=600,   # ~400 mots max
+            temperature=0.0,  # Basse température pour cohérence
+            max_tokens=1000,   # ~650 mots max
         )
         
         identity_text = response.choices[0].message.content.strip()
@@ -177,10 +177,10 @@ def sample_document_pages(doc: DoclingDocument, max_chars: int = 10000) -> Dict[
         total_p = len(paragraphs)
         
         # Échantillonnage : 15 début, 15 milieu, 15 fin
-        start_p = paragraphs[:15]
+        start_p = paragraphs[:20]
         mid_idx = total_p // 2
-        mid_p = paragraphs[mid_idx-2 : mid_idx+7]
-        end_p = paragraphs[-15:]
+        mid_p = paragraphs[mid_idx-10 : mid_idx+10]
+        end_p = paragraphs[-20:]
         
         sampled_text = (
             "--- DÉBUT DU DOCUMENT ---\n" + "\n\n".join(start_p) +
@@ -191,7 +191,7 @@ def sample_document_pages(doc: DoclingDocument, max_chars: int = 10000) -> Dict[
 
         return {
             "text": sampled_text[:max_chars], # Sécurité finale
-            "pages_used": [0] #Symbolique, structure linéaire: 15 paragraphes de Début/Milieu/Fin du doc,chunk identité est spécial
+            "pages_used": [0] #Symbolique, structure linéaire: 20 paragraphes de Début/Milieu/Fin du doc,chunk identité est spécial
         }
     except Exception as e:
         print(f"⚠️ Erreur échantillonnage (fallback lignes) : {e}")
@@ -232,7 +232,7 @@ EXTRAITS DU DOCUMENT:
 {sampled_text}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TÂCHE: Crée une FICHE IDENTITÉ ultra-condensée (MAX 400 mots).
+TÂCHE: Crée une FICHE IDENTITÉ ultra-condensée (MAX 650 mots).
 TU DOIS IMPÉRATIVEMENT UTILISER DES RETOURS À LA LIGNE ENTRE CHAQUE ÉLÉMENT.
 {context_instruction}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

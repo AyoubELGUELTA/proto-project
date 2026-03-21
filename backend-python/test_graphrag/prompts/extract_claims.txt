@@ -1,0 +1,31 @@
+-Goal-
+Extract factual claims from the text with Islamic scholarship standards.
+
+-Steps-
+1. Identify factual claims about:
+   - Historical events (battles, migrations, treaties)
+   - Family relationships (marriages, parentage)
+   - Religious concepts and teachings
+   - Hadith transmissions and authenticity
+   - Biographical facts (ages, dates, locations)
+
+2. For each claim, extract:
+   - subject: The entity the claim is about
+   - object: What is claimed about the subject
+   - claim_type: One of [fait_historique, relation_familiale, enseignement_religieux, transmission_hadith, fait_biographique, date_evenement]
+   - description: Full statement of the claim
+   - source_type: Coran, Hadith (specify authenticity), Sira, Tafsir
+   - source_reference: Specific citation if available (e.g., "Bukhari 5133")
+   - confidence: high (explicit in text) / medium (strongly implied) / low (inferred)
+
+-CRITICAL for Islamic content-
+- Always note Hadith authenticity level (Sahih, Hassan, Daif)
+- Distinguish between established facts and scholarly opinions
+- Note if multiple sources confirm the claim
+- Flag any contradictions between sources
+
+-Example Claims-
+("claim"<|>Aïcha bint Abi Bakr<|>âge au mariage<|>fait_biographique<|>Aïcha avait 6 ans lors du contrat de mariage, 9 ans lors de la consommation<|>Hadith Sahih<|>Bukhari 5133, 5134<|>high)
+##
+("claim"<|>Bataille de Badr<|>date<|>date_evenement<|>La bataille de Badr a eu lieu en l'an 2 de l'Hégire (624 EC)<|>Sira<|>Ibn Hisham<|>high)
+##
