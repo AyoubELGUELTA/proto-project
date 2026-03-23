@@ -39,6 +39,10 @@ ONTOLOGIE - TYPES D'ENTITÉS SIRA:
      * Maymuna bint al-Harith
    - Format: Nom complet avec filiation (bint = fille de)
    - Toujours avec honorific: RA, رضي الله عنها
+   ⚠️ CONTRE-EXEMPLES (PAS MotherBeliever):
+   - Fatima bint Muhammad → AhlBayt (fille, pas épouse)
+   - Asma bint Abi Bakr → Sahabiya (sœur d'Aïcha, pas épouse Prophète)
+   - Umm Kulthum bint Muhammad → AhlBayt (fille)
 
 3. **Sahabi** (Compagnons - الصحابة)
    - Hommes ayant rencontré le Prophète (ﷺ) et cru en lui
@@ -104,8 +108,25 @@ RÈGLES D'EXTRACTION CRITIQUES:
    - Si absent dans texte, AJOUTER dans normalized_name
 
 3. **Variantes orthographiques (aliases)**
-   - Arabe + Translittérations: ["Aïcha", "Aicha", "A'isha", "عائشة"]
-   - Noms courts + longs: ["Abu Bakr", "Abu Bakr al-Siddiq", "Abdullah ibn Abi Quhafa"]
+   ✅ INCLURE:
+   - Noms complets variantes: ["Aïcha bint Abi Bakr", "A'isha bint Abu Bakr"]
+   - Noms arabes: ["عائشة بنت أبي بكر"]
+   - Surnoms UNIQUES: ["al-Siddiqah"] (la Véridique)
+   - Kunya SI UNIQUE (ou QUASIMENT): ["Umm Abdullah"] (mère d'Abdullah)
+   
+   ❌ NE PAS INCLURE:
+   - Prénoms seuls: "Aïcha", "Abdullah" (trop communs, non-distinctifs)
+   - Titres génériques: "Mère des Croyants" (s'applique à 11 personnes)
+   - Articles seuls: "al-", "ibn", "bint"
+   
+   🎯 RÈGLE D'OR: Alias doit identifier UNIQUEMENT cette personne
+   
+   Exemples:
+   ✅ "Abu Bakr al-Siddiq" → aliases: ["Abdullah ibn Abi Quhafa", "al-Siddiq"]
+   ❌ PAS: ["Abu Bakr", "Abdullah"] (trop communs)
+   
+   ✅ "Aïcha bint Abi Bakr" → aliases: ["A'isha bint Abu Bakr", "Umm Abdullah"]
+   ❌ PAS: ["Aïcha", "عائشة"] seuls
 
 4. **Disambiguation par contexte**
    - "Zaynab" seule = ambigu (2 Mères portent ce nom)

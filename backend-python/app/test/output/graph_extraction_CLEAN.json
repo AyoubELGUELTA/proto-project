@@ -1,0 +1,652 @@
+{
+  "entities": [
+    {
+      "name": "Aïcha bint Abi Bakr",
+      "type": "MotherBeliever",
+      "aliases": [
+        "Asma bint Abi Bakr",
+        "Aicha",
+        "عائشة بنت أبي بكر",
+        "أسماء بنت أبي بكر",
+        "Umm Abdullah",
+        "A'isha",
+        "Asma",
+        "Aïcha"
+      ],
+      "context_description": "Sœur d'Aïcha, mariée à Zubayr ibn al-Awwam. | Mère des Croyants, fille d'Abu Bakr, a épousé le Prophète Muhammad (ﷺ) à Médine.",
+      "confidence": 1.0,
+      "normalized_name": "aicha bint abi bakr"
+    },
+    {
+      "name": "Abu Bakr al-Siddiq",
+      "type": "Sahabi",
+      "aliases": [
+        "أبو بكر",
+        "Abdullah ibn Abi Quhafa",
+        "أبو بكر الصديق",
+        "Abu Bakr"
+      ],
+      "context_description": "Père d'Aïcha, premier calife. | Compagnon du Prophète (ﷺ) qui a migré avec lui vers Médine.",
+      "confidence": 1.0,
+      "normalized_name": "abu bakr siddiq"
+    },
+    {
+      "name": "Battle of Uhud",
+      "normalized_name": "battle of uhud",
+      "type": "Battle",
+      "aliases": [
+        "Uhud",
+        "غزوة أحد",
+        "Ghazwat Uhud"
+      ],
+      "context_description": "Bataille où Aïcha a participé en apportant de l'eau aux combattants.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Quraysh",
+      "type": "Tribe",
+      "aliases": [
+        "قريش",
+        "Quraysh"
+      ],
+      "context_description": "Tribu d'Aïcha, de laquelle elle est issue. | Tribu mecquoise qui a combattu les musulmans à Badr. | Tribu à laquelle appartenaient Khadija bint Khuwaylid et le Prophète Muhammad (ﷺ).",
+      "confidence": 1.0,
+      "normalized_name": "quraysh"
+    },
+    {
+      "name": "Fatima bint Muhammad",
+      "type": "AhlBayt",
+      "aliases": [
+        "فاطمة",
+        "فاطمة الزهراء",
+        "Fatima",
+        "فاطمة بنت محمد",
+        "Fatima az-Zahra"
+      ],
+      "context_description": "Fille du Prophète Muhammad (ﷺ), mentionnée indirectement comme 'la fille du Prophète'. | Fille du Prophète (ﷺ), épouse d'Ali ibn Abi Talib, mère de Hassan et Hussain. | Fille du Prophète Muhammad (ﷺ) et Khadija bint Khuwaylid. | Fille du Prophète (ﷺ), mentionnée indirectement comme 'la fille du Prophète'. | Mentionnée indirectement comme 'la fille du Prophète' et 'l'épouse d'Ali'.",
+      "confidence": 1.0,
+      "normalized_name": "fatima bint muhammad"
+    },
+    {
+      "name": "Qasim ibn Muhammad",
+      "type": "Child",
+      "aliases": [
+        "قاسم بن محمد",
+        "Qasim",
+        "قاسم"
+      ],
+      "context_description": "Mentionné indirectement comme 'le fils de Khadija'. | Fils de Khadija bint Khuwaylid et du Prophète Muhammad (ﷺ), décédé enfant. | Fils du Prophète (ﷺ), mentionné indirectement comme 'le fils de Khadija'. | Fils de Khadija, mentionné indirectement comme 'le fils de Khadija'.",
+      "confidence": 1.0,
+      "normalized_name": "qasim ibn muhammad"
+    },
+    {
+      "name": "Medina",
+      "type": "City",
+      "aliases": [
+        "المدينة المنورة",
+        "المدينة",
+        "Médine"
+      ],
+      "context_description": "Mentionné implicitement comme 'la ville' où Aïcha a épousé le Prophète. | Ville où le Prophète Muhammad (ﷺ) et ses compagnons ont migré. | Mentionné indirectement comme 'la ville' dans le contexte de la bataille. | Mention implicite de la ville où Fatima a épousé Ali.",
+      "confidence": 1.0,
+      "normalized_name": "medina"
+    },
+    {
+      "name": "Ali ibn Abi Talib",
+      "type": "Sahabi",
+      "aliases": [
+        "علي بن أبي طالب",
+        "Ali"
+      ],
+      "context_description": "Cousin et époux de Fatima, père de Hassan et Hussain. | Courageux combattant à la bataille de Badr.",
+      "confidence": 1.0,
+      "normalized_name": "ali ibn abi talib"
+    },
+    {
+      "name": "Battle of Badr",
+      "type": "Battle",
+      "aliases": [
+        "Badr",
+        "غزوة بدر",
+        "Ghazwat Badr"
+      ],
+      "context_description": "Bataille où le Prophète Muhammad a dirigé 313 musulmans contre Quraysh. | Bataille qui a eu lieu avant le mariage de Fatima et Ali.",
+      "confidence": 1.0,
+      "normalized_name": "battle of badr"
+    },
+    {
+      "name": "Hassan ibn Ali",
+      "normalized_name": "hassan ibn ali ra",
+      "type": "AhlBayt",
+      "aliases": [],
+      "context_description": "Fils de Fatima et Ali, mentionné comme petit-fils du Prophète.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Hussain ibn Ali",
+      "normalized_name": "hussain ibn ali ra",
+      "type": "AhlBayt",
+      "aliases": [],
+      "context_description": "Fils de Fatima et Ali, mentionné comme petit-fils du Prophète.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Uthman ibn Affan",
+      "normalized_name": "uthman ibn affan ra",
+      "type": "Sahabi",
+      "aliases": [
+        "Uthman",
+        "عثمان بن عفان"
+      ],
+      "context_description": "Compagnon du Prophète (ﷺ) qui a migré vers l'Abyssinie.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Ruqayya bint Muhammad",
+      "normalized_name": "ruqayya bint muhammad ra",
+      "type": "MotherBeliever",
+      "aliases": [
+        "Ruqayya",
+        "رقية بنت محمد"
+      ],
+      "context_description": "Épouse d'Uthman et fille du Prophète (ﷺ), présente lors de la migration vers l'Abyssinie.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Prophète Muhammad",
+      "normalized_name": "muhammad saaw",
+      "type": "Prophet",
+      "aliases": [
+        "Muhammad",
+        "محمد",
+        "صلى الله عليه وسلم"
+      ],
+      "context_description": "Prophète de l'Islam, a migré vers Médine avec Abu Bakr.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Grotte de Thawr",
+      "normalized_name": "grotte de thawr",
+      "type": "Place",
+      "aliases": [
+        "Grotte de Thawr",
+        "غار ثور"
+      ],
+      "context_description": "Lieu où le Prophète (ﷺ) et Abu Bakr se sont cachés pendant leur migration.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Yathrib",
+      "normalized_name": "yathrib",
+      "type": "Place",
+      "aliases": [
+        "Yathrib",
+        "يثرب",
+        "Médine"
+      ],
+      "context_description": "Ville où le Prophète (ﷺ) et les Muhajirun ont migré.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Hijra",
+      "type": "Event",
+      "aliases": [
+        "الهجرة",
+        "Hijra",
+        "Migration"
+      ],
+      "context_description": "Migration du Prophète Muhammad (ﷺ) et de ses compagnons de La Mecque à Médine. | Migration du Prophète (ﷺ) et des croyants vers Médine, marquant le début du calendrier islamique. | Mentionné indirectement comme 'quand ils ont migré'.",
+      "confidence": 1.0,
+      "normalized_name": "hijra"
+    },
+    {
+      "name": "Muhajirun",
+      "type": "Group",
+      "aliases": [
+        "المهاجرون",
+        "Émigrés"
+      ],
+      "context_description": "Ceux qui ont émigré de La Mecque à Médine. | Mentionné indirectement comme 'ceux qui ont émigré'.",
+      "confidence": 1.0,
+      "normalized_name": "muhajirun"
+    },
+    {
+      "name": "Ansar",
+      "type": "Group",
+      "aliases": [
+        "الأنصار",
+        "Auxiliaires"
+      ],
+      "context_description": "Mentionné indirectement comme 'les auxiliaires'. | Les auxiliaires de Médine qui ont aidé le Prophète Muhammad (ﷺ) et les émigrés.",
+      "confidence": 1.0,
+      "normalized_name": "ansar"
+    },
+    {
+      "name": "Khadija bint Khuwaylid",
+      "normalized_name": "khadija bint khuwaylid ra",
+      "type": "MotherBeliever",
+      "aliases": [
+        "Khadija",
+        "Khadijah",
+        "خديجة بنت خويلد"
+      ],
+      "context_description": "Première épouse du Prophète Muhammad (ﷺ) et riche marchande mecquoise.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Prophète Muhammad",
+      "type": "Prophet",
+      "aliases": [
+        "Prophète Muhammad",
+        "Muhammad",
+        "محمد بن عبد الله"
+      ],
+      "context_description": "Prophète de l'Islam, mari de Khadija bint Khuwaylid. | Le Prophète qui a dirigé les musulmans à la bataille de Badr.",
+      "confidence": 1.0,
+      "normalized_name": "muhammad ibn abdullah"
+    },
+    {
+      "name": "Banu Asad",
+      "normalized_name": "banu asad",
+      "type": "Tribe",
+      "aliases": [],
+      "context_description": "Clan auquel appartenait Khadija bint Khuwaylid.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Hamza ibn Abdul-Muttalib",
+      "type": "AhlBayt",
+      "aliases": [
+        "حمزة بن عبد المطلب",
+        "Hamza"
+      ],
+      "context_description": "Commandant de l'aile gauche et héros clé de la bataille de Badr. | Oncle paternel du Prophète Muhammad (ﷺ), membre de Banu Hashim.",
+      "confidence": 1.0,
+      "normalized_name": "hamza ibn abdul muttalib"
+    },
+    {
+      "name": "Banu Hashim",
+      "normalized_name": "banu hashim",
+      "type": "Tribe",
+      "aliases": [],
+      "context_description": "Sous-clan de la tribu Quraysh auquel appartenait le Prophète Muhammad (ﷺ).",
+      "confidence": 1.0
+    },
+    {
+      "name": "House of Prophet",
+      "normalized_name": "house of prophet",
+      "type": "Location",
+      "aliases": [],
+      "context_description": "Maison du Prophète Muhammad (ﷺ) à Médine.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Battle of Badr",
+      "normalized_name": "battle of badr",
+      "type": "Event",
+      "aliases": [],
+      "context_description": "Grande victoire des musulmans lors de la bataille de Badr.",
+      "confidence": 1.0
+    },
+    {
+      "name": "Bilal ibn Rabah",
+      "normalized_name": "bilal ibn rabah ra",
+      "type": "Sahabi",
+      "aliases": [
+        "Bilal",
+        "بلال بن رباح"
+      ],
+      "context_description": "A donné l'appel à la prière après la victoire à Badr.",
+      "confidence": 1.0
+    }
+  ],
+  "relations": [
+    {
+      "source_entity": "Aïcha bint Abi Bakr",
+      "relation_type": "DAUGHTER_OF",
+      "target_entity": "Abu Bakr al-Siddiq",
+      "properties": {},
+      "context_evidence": "Aïcha bint Abi Bakr (bint = fille de)",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Aïcha bint Abi Bakr",
+      "relation_type": "MEMBER_OF_TRIBE",
+      "target_entity": "Quraysh",
+      "properties": {},
+      "context_evidence": "de la tribu Quraysh",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Aïcha bint Abi Bakr",
+      "relation_type": "PARTICIPATED_IN",
+      "target_entity": "Battle of Uhud",
+      "properties": {
+        "role": "Medical support",
+        "date": "3 AH"
+      },
+      "context_evidence": "a participé à la bataille d'Uhud en apportant de l'eau aux combattants blessés",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Aïcha bint Abi Bakr",
+      "relation_type": "SIBLING",
+      "target_entity": "Aïcha bint Abi Bakr",
+      "properties": {
+        "type": "sister"
+      },
+      "context_evidence": "Sa sœur Asma bint Abi Bakr",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Fatima bint Muhammad",
+      "relation_type": "MARRIED_TO",
+      "target_entity": "Ali ibn Abi Talib",
+      "properties": {
+        "date_hijri": "2 AH",
+        "location": "Medina"
+      },
+      "context_evidence": "Fatima a épousé son cousin Ali ibn Abi Talib à Médine.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Fatima bint Muhammad",
+      "relation_type": "MOTHER_OF",
+      "target_entity": "Hassan ibn Ali",
+      "properties": {},
+      "context_evidence": "Elle a donné naissance à Hassan et Hussain.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Fatima bint Muhammad",
+      "relation_type": "MOTHER_OF",
+      "target_entity": "Hussain ibn Ali",
+      "properties": {},
+      "context_evidence": "Elle a donné naissance à Hassan et Hussain.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Ali ibn Abi Talib",
+      "relation_type": "FATHER_OF",
+      "target_entity": "Hassan ibn Ali",
+      "properties": {},
+      "context_evidence": "père de Hassan et Hussain.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Ali ibn Abi Talib",
+      "relation_type": "FATHER_OF",
+      "target_entity": "Hussain ibn Ali",
+      "properties": {},
+      "context_evidence": "père de Hassan et Hussain.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Ali ibn Abi Talib",
+      "relation_type": "MARRIED_TO",
+      "target_entity": "Fatima bint Muhammad",
+      "properties": {
+        "date_hijri": "2 AH",
+        "location": "Medina"
+      },
+      "context_evidence": "La fille du Prophète a épousé Ali.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Uthman ibn Affan",
+      "relation_type": "MARRIED_TO",
+      "target_entity": "Ruqayya bint Muhammad",
+      "properties": {},
+      "context_evidence": "Uthman ibn Affan et son épouse Ruqayya bint Muhammad.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Ruqayya bint Muhammad",
+      "relation_type": "DAUGHTER_OF",
+      "target_entity": "Prophète Muhammad",
+      "properties": {},
+      "context_evidence": "Ruqayya bint Muhammad, fille du Prophète (ﷺ).",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Prophète Muhammad",
+      "relation_type": "MARRIED_TO",
+      "target_entity": "Khadija bint Khuwaylid",
+      "properties": {
+        "date_hijri": "3 AH",
+        "location": "Medina"
+      },
+      "context_evidence": "Le Prophète (ﷺ) a épousé Khadija bint Khuwaylid.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Prophète Muhammad",
+      "relation_type": "MARRIED_TO",
+      "target_entity": "Aïcha bint Abi Bakr",
+      "properties": {
+        "date_hijri": "3 AH",
+        "location": "Medina"
+      },
+      "context_evidence": "Le Prophète (ﷺ) a épousé Aïcha bint Abi Bakr.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Prophète Muhammad",
+      "relation_type": "FATHER_OF",
+      "target_entity": "Fatima bint Muhammad",
+      "properties": {},
+      "context_evidence": "Le Prophète (ﷺ) est le père de Fatima bint Muhammad.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Muhajirun",
+      "relation_type": "MIGRATED_TO",
+      "target_entity": "Yathrib",
+      "properties": {
+        "event": "Hijra",
+        "year": "622 CE / 1 AH"
+      },
+      "context_evidence": "Les Muhajirun ont migré vers Yathrib (Médine).",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Abu Bakr al-Siddiq",
+      "relation_type": "MARRIED_TO",
+      "target_entity": "Aïcha bint Abi Bakr",
+      "properties": {},
+      "context_evidence": "Abu Bakr est le père d'Aïcha bint Abi Bakr.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Fatima bint Muhammad",
+      "relation_type": "DAUGHTER_OF",
+      "target_entity": "Prophète Muhammad",
+      "properties": {},
+      "context_evidence": "Fatima bint Muhammad est la fille du Prophète (ﷺ), relation implicite ratée en Pass 1.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Fatima bint Muhammad",
+      "relation_type": "MARRIED_TO",
+      "target_entity": "Ali ibn Abi Talib",
+      "properties": {},
+      "context_evidence": "La fille du Prophète a épousé Ali, relation implicite ratée en Pass 1.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Khadija bint Khuwaylid",
+      "relation_type": "MARRIED_TO",
+      "target_entity": "Prophète Muhammad",
+      "properties": {
+        "date_hijri": "3 AH",
+        "location": "Medina"
+      },
+      "context_evidence": "Son premier mariage avec le Prophète Muhammad (ﷺ)",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Khadija bint Khuwaylid",
+      "relation_type": "MOTHER_OF",
+      "target_entity": "Fatima bint Muhammad",
+      "properties": {},
+      "context_evidence": "Khadija bint Khuwaylid et du Prophète Muhammad (ﷺ)",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Khadija bint Khuwaylid",
+      "relation_type": "MEMBER_OF_TRIBE",
+      "target_entity": "Banu Asad",
+      "properties": {},
+      "context_evidence": "appartenait au clan Banu Asad",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Prophète Muhammad",
+      "relation_type": "MEMBER_OF_TRIBE",
+      "target_entity": "Banu Hashim",
+      "properties": {},
+      "context_evidence": "de Banu Hashim (autre sous-clan de Quraysh)",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Hamza ibn Abdul-Muttalib",
+      "relation_type": "UNCLE_OF",
+      "target_entity": "Prophète Muhammad",
+      "properties": {},
+      "context_evidence": "oncle paternel du Prophète (ﷺ)",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Khadija bint Khuwaylid",
+      "relation_type": "MEMBER_OF_TRIBE",
+      "target_entity": "Quraysh",
+      "properties": {},
+      "context_evidence": "appartenait à la tribu Quraysh",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Prophète Muhammad",
+      "relation_type": "MEMBER_OF_TRIBE",
+      "target_entity": "Quraysh",
+      "properties": {},
+      "context_evidence": "appartenait à la tribu Quraysh",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Qasim ibn Muhammad",
+      "relation_type": "SON_OF",
+      "target_entity": "Khadija bint Khuwaylid",
+      "properties": {},
+      "context_evidence": "Fils de Khadija bint Khuwaylid et du Prophète Muhammad (ﷺ), décédé enfant.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Fatima bint Muhammad",
+      "relation_type": "DAUGHTER_OF",
+      "target_entity": "Prophète Muhammad",
+      "properties": {},
+      "context_evidence": "Fille du Prophète Muhammad (ﷺ) et Khadija bint Khuwaylid.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Fatima bint Muhammad",
+      "relation_type": "MARRIED_TO",
+      "target_entity": "Ali ibn Abi Talib",
+      "properties": {},
+      "context_evidence": "La fille du Prophète a épousé Ali.",
+      "confidence": 0.9
+    },
+    {
+      "source_entity": "Prophète Muhammad",
+      "relation_type": "LED",
+      "target_entity": "Battle of Badr",
+      "properties": {},
+      "context_evidence": "Le Prophète Muhammad (ﷺ) a dirigé 313 musulmans contre l'armée mecquoise de Quraysh.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Ali ibn Abi Talib",
+      "relation_type": "PARTICIPATED_IN",
+      "target_entity": "Battle of Badr",
+      "properties": {
+        "role": "fighter"
+      },
+      "context_evidence": "Ali ibn Abi Talib a combattu vaillamment.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Hamza ibn Abdul-Muttalib",
+      "relation_type": "PARTICIPATED_IN",
+      "target_entity": "Battle of Badr",
+      "properties": {
+        "role": "commander of the left wing"
+      },
+      "context_evidence": "Hamza ibn Abdul-Muttalib, commandant de l'aile gauche, a été un héros clé de cette victoire.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Bilal ibn Rabah",
+      "relation_type": "PARTICIPATED_IN",
+      "target_entity": "Battle of Badr",
+      "properties": {
+        "role": "caller to prayer"
+      },
+      "context_evidence": "Bilal ibn Rabah a donné l'appel à la prière après la victoire.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Quraysh",
+      "relation_type": "MEMBER_OF_TRIBE",
+      "target_entity": "Quraysh",
+      "properties": {},
+      "context_evidence": "l'armée mecquoise de Quraysh.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Fatima bint Muhammad",
+      "relation_type": "DAUGHTER_OF",
+      "target_entity": "Prophète Muhammad",
+      "properties": {},
+      "context_evidence": "Mentionnée indirectement comme 'la fille du Prophète'.",
+      "confidence": 1.0
+    },
+    {
+      "source_entity": "Fatima bint Muhammad",
+      "relation_type": "MARRIED_TO",
+      "target_entity": "Ali ibn Abi Talib",
+      "properties": {},
+      "context_evidence": "Mentionnée indirectement comme 'l'épouse d'Ali'.",
+      "confidence": 1.0
+    }
+  ],
+  "validation": {
+    "valid": false,
+    "errors": [
+      "❌ 2 Prophètes détectés (should be 1)"
+    ],
+    "warnings": [],
+    "stats": {
+      "total_entities": 27,
+      "prophets": 2,
+      "mothers": 3,
+      "sahaba": 4,
+      "ahl_bayt": 4,
+      "places": 2,
+      "battles": 2
+    }
+  },
+  "stats": {
+    "before": {
+      "entities": 51,
+      "relations": 42
+    },
+    "after": {
+      "entities": 27,
+      "relations": 36
+    },
+    "reduction": {
+      "entities": 24,
+      "relations": 6
+    }
+  }
+}
