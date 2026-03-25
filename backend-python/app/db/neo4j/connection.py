@@ -4,7 +4,7 @@ Connexion Neo4j pour Graph RAG
 
 from neo4j import AsyncGraphDatabase
 from typing import Optional
-from app.core.config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD  # ← Import config
+from app.core.config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD  
 
 class Neo4jConnection:
     _driver: Optional[AsyncGraphDatabase] = None
