@@ -91,7 +91,7 @@ async def test_extraction_with_postprocessing():
         {"chunk_id": "test_001", "text": CHUNK_1_FAMILLE, "heading_full": "Relations familiales"},
         {"chunk_id": "test_002", "text": CHUNK_2_PRONOMS, "heading_full": "Fatima az-Zahra"},
         {"chunk_id": "test_003", "text": CHUNK_3_EVENEMENTS, "heading_full": "Migrations"},
-        {"chunk_id": "test_004", "text": CHUNK_4_TRIBUS, "heading_full": "Khadija"},
+        {"chunk_id": "test_004", "text": CHUNK_4_TRIBUS, "heading_full": "Khadija et tribus"},
         {"chunk_id": "test_005", "text": CHUNK_5_BATAILLE, "heading_full": "Bataille de Badr"},
     ]
     

@@ -19,6 +19,9 @@ class EntityType(str, Enum):
     BATTLE = "Battle"
     CONCEPT = "Concept"
     PERIOD = "Period"
+    OPPONENT = "Opponent"
+    DOCUMENT = "Document"
+    ANIMAL = "Animal"
 
 class RelationType(str, Enum):
     """Relations spécifiques Sira"""
@@ -35,6 +38,8 @@ class RelationType(str, Enum):
     WITNESSED = "WITNESSED"
     ORGANIZED = "ORGANIZED"
     DIED_IN = "DIED_IN"
+    CONVERTED_TO_ISLAM_AT = "CONVERTED_TO_ISLAM_AT"
+    COMMISSIONED_BY = "COMMISSIONED_BY"
     
     # Spatiales
     LIVED_IN = "LIVED_IN"
@@ -43,11 +48,15 @@ class RelationType(str, Enum):
     
     # Tribales
     MEMBER_OF_TRIBE = "MEMBER_OF_TRIBE"
-    
+    ALLIED_WITH = "ALLIED_WITH"
+    BATTLED_WITH="BATTLED_WITH"
+
     # Temporelles
     OCCURRED_DURING = "OCCURRED_DURING"
     BEFORE = "BEFORE"
     AFTER = "AFTER"
+
+    NARRATED_BY = "NARRATED_BY"
 
 # Schema pour LlamaIndex
 SIRA_SCHEMA: Dict[str, List[str]] = {

@@ -440,9 +440,14 @@ async def deduplicate_entities_clustered(
     relations_updated = []
     for rel in relations:
         new_rel = rel.copy()
-        # Si la source ou la cible a été renommée/mergée, on met à jour
-        new_rel["source_entity"] = name_mapping.get(rel["source_entity"], rel["source_entity"])
-        new_rel["target_entity"] = name_mapping.get(rel["target_entity"], rel["target_entity"])
+        # Dans la boucle for rel in relations:
+        source = rel.get("source_entity") or rel.get("source") or rel.get("from")
+        target = rel.get("target_entity") or rel.get("target") or rel.get("to")
+
+        if source:
+            new_rel["source_entity"] = name_mapping.get(source, source)
+        if target:
+            new_rel["target_entity"] = name_mapping.get(target, target)
         relations_updated.append(new_rel)
     
     return entities_dedup, relations_updated

@@ -1,579 +1,257 @@
 """
 Prompts pour extraction Graph RAG - Domaine Sira
-Structure modulaire préparée pour multi-domaines futurs
+Structure optimisée pour le Prompt Caching (Prefix > 1024 tokens)
+Format : Tuple (System_Prompt, User_Prompt_Template)
 """
 
-from typing import Dict
+from typing import Dict, Tuple
+
+
 
 # ============================================================
-# DOMAIN: SIRA (Prophetic Biography)
+# DOMAIN: SIRA - ENTITY EXTRACTION (PASS 1)
 # ============================================================
+SIRA_ENTITY_P1_SYSTEM = """Tu es un expert en généalogie et biographie prophétique (Sira). 
 
-SIRA_ENTITY_PASS1 = """
-Tu es un expert en extraction d'entités pour un Knowledge Graph Islamique spécialisé en SIRA (Biographie Prophétique).
+Ta mission est d'extraire les entités avec une précision académique pour construire un graphe de connaissances robuste.
 
-CONTEXTE DU DOCUMENT:
-{identity_context}
+### 📋 ONTOLOGIE ET TYPES AUTORISÉS :
+1. Prophet : Exclusivement pour Muhammad ﷺ.
+2. MotherBeliever : Épouses du Prophète (ex: Khadija RA).
+3. Sahabi/Sahabiya : Compagnons masculins/féminins.
+4. AhlBayt : Famille proche du Prophète.
+5. Tribe : Clans et tribus (ex: Banu Hashim, Quraysh).
+6. Place : Villes, montagnes, puits (ex: Yathrib, Badr, Mount Uhud).
+7. Battle/Event : Conflits ou événements majeurs (ex: Battle of Badr, Hijra).
+8. Concept : Termes techniques (ex: Ansar, Muhajirun, Revelation).
 
-CHUNK À ANALYSER:
-{chunk_text}
+### 📏 RÈGLES DE NOMMAGE ET NORMALISATION :
+- Noms complets : Toujours extraire le nom long si présent (ex: "Hamza ibn Abdul-Muttalib").
+- Honorifics : Ajouter 'ﷺ' pour le Prophète, 'RA' pour les Compagnons.
+- Langue : Préférer la translittération standardisée.
 
-ONTOLOGIE - TYPES D'ENTITÉS SIRA:
+### 🚫 PROTOCOLE D'EXCLUSION (NE PAS EXTRAIRE) :
+Pour éviter de polluer le graphe, ignore systématiquement les éléments suivants :
+1. ADJECTIFS ET QUALITÉS : Ne pas extraire "le Miséricordieux", "généreux", "pieux" comme des entités, sauf s'ils font partie d'un nom propre canonique.
+2. OBJETS COMMUNS : Ignore "l'épée", "le livre", "le chameau" (sauf s'il s'agit d'un animal nommé comme Al-Qaswa).
+3. LIEUX GÉNÉRIQUES : Ne pas extraire "la maison", "le désert", "la route", sauf s'ils sont nommés (ex: "Maison d'Arkam").
+4. TEMPS VAGUES : Ignore "le lendemain", "après un mois", "le matin".
+5. PERSONNAGES COLLECTIFS : Ne pas extraire "les gens", "les polythéistes", "les musulmans" (utilise le type 'Concept' ou 'Tribe' uniquement si c'est un groupe spécifique comme 'Ansar').
 
-1. **Prophet** (Prophète)
-   - Le Prophète Muhammad (ﷺ)
-   - Toujours avec honorific: SAW, ﷺ, صلى الله عليه وسلم
+### ❌ EXEMPLES DE REJET (ANTI-PATTERNS) :
+- Texte : "Le Prophète était un homme **très courageux**." 
+  -> Rejet : "très courageux" (Adjectif).
+- Texte : "Ils marchèrent vers **une montagne** au sud de **la ville**."
+  -> Rejet : "montagne", "ville" (Lieux trop génériques).
+- Texte : "Il portait **une lettre** pour les chefs."
+  -> Rejet : "lettre" (Objet commun sans valeur de nœud).
+- Texte : "La **période pré-islamique** était sombre."
+  -> Rejet : "sombre" (Qualificatif).
 
-2. **MotherBeliever** (Mères des Croyants - أمهات المؤمنين)
-   - Les 11 épouses du Prophète (ﷺ):
-     * Khadija bint Khuwaylid
-     * Sawda bint Zam'a
-     * Aïcha bint Abi Bakr
-     * Hafsa bint Umar
-     * Zaynab bint Khuzayma
-     * Umm Salama (Hind bint Abi Umayya)
-     * Zaynab bint Jahsh
-     * Juwayriya bint al-Harith
-     * Umm Habiba (Ramla bint Abi Sufyan)
-     * Safiyya bint Huyayy
-     * Maymuna bint al-Harith
-   - Format: Nom complet avec filiation (bint = fille de)
-   - Toujours avec honorific: RA, رضي الله عنها
-   ⚠️ CONTRE-EXEMPLES (PAS MotherBeliever):
-   - Fatima bint Muhammad → AhlBayt (fille, pas épouse)
-   - Asma bint Abi Bakr → Sahabiya (sœur d'Aïcha, pas épouse Prophète)
-   - Umm Kulthum bint Muhammad → AhlBayt (fille)
-
-3. **Sahabi** (Compagnons - الصحابة)
-   - Hommes ayant rencontré le Prophète (ﷺ) et cru en lui
-   - Exemples: Abu Bakr, Umar ibn al-Khattab, Uthman, Ali, Bilal, Salman al-Farsi
-   - Honorific: RA, رضي الله عنه
-   
-4. **Sahabiya** (Compagnons féminins)
-   - Femmes compagnons (hors Mères des Croyants)
-   - Exemples: Asma bint Abi Bakr, Umm Sulaym, Fatima bint Muhammad
-   - Honorific: RA, رضي الله عنها
-
-5. **AhlBayt** (Famille du Prophète - أهل البيت)
-   - Famille directe: Fatima, Hassan, Hussain, Ali ibn Abi Talib
-   - Oncles: Abu Talib, Hamza, Abbas
-   - Tantes: Safiya bint Abdul-Muttalib
-
-6. **Tribe** (Tribus arabes - القبائل)
-   - Quraysh (sous-clans: Banu Hashim, Banu Umayya, Banu Makhzum)
-   - Aws, Khazraj (tribus de Médine)
-   - Banu Nadir, Banu Qaynuqa, Banu Qurayza (tribus juives)
-   - Thaqif, Hawazin, Ghatafan
-
-7. **Place** (Lieux - الأماكن)
-   - Villes: Mecca (مكة), Medina (المدينة), Ta'if, Abyssinia
-   - Sites sacrés: Ka'ba, Masjid al-Haram, Masjid Nabawi
-   - Champs de bataille: Badr, Uhud, Khandaq, Khaybar, Hunayn
-   - Montagnes: Hira, Thawr, Uhud
-
-8. **Battle** (Batailles - الغزوات)
-   - Ghazawat (dirigées par le Prophète): Badr, Uhud, Khandaq, Khaybar, Mecca Conquest, Hunayn, Tabuk
-   - Saraya (expéditions sans le Prophète): Nakhla, Mu'tah
-   - Date format: Année Hijri (ex: 2 AH, 5 AH)
-
-9. **Event** (Événements historiques - الأحداث)
-   - Révélation première (610 CE)
-   - Hijra (Migration à Médine, 622 CE / 1 AH)
-   - Traités: Hudaybiya, Aqaba
-   - Mariages prophétiques
-   - Naissances/Décès de figures clés
-
-10. **Period** (Périodes - الفترات)
-    - Meccan Period (Période Mecquoise, 610-622 CE)
-    - Medinan Period (Période Médinoise, 622-632 CE)
-    - Pre-Hijra, Post-Hijra
-    - Contexte: Jahiliya (pré-islamique)
-
-11. **Concept** (Concepts religieux/historiques)
-    - Hijra, Shahada, Bay'ah (serment d'allégeance)
-    - Ansar (Auxiliaires de Médine), Muhajirun (Émigrés)
-    - Ahl al-Kitab (Gens du Livre)
-
-RÈGLES D'EXTRACTION CRITIQUES:
-
-1. **Noms complets obligatoires**
-   - ✅ "Aïcha bint Abi Bakr" (nom + filiation)
-   - ❌ "Aïcha" seul (incomplet)
-   - ✅ "Umar ibn al-Khattab"
-   - ❌ "Umar" seul
-
-2. **Honorifics obligatoires**
-   - Prophète: SAW, ﷺ
-   - Mères/Compagnons: RA, رضي الله عنه/ها
-   - Si absent dans texte, AJOUTER dans normalized_name
-
-3. **Variantes orthographiques (aliases)**
-   ✅ INCLURE:
-   - Noms complets variantes: ["Aïcha bint Abi Bakr", "A'isha bint Abu Bakr"]
-   - Noms arabes: ["عائشة بنت أبي بكر"]
-   - Surnoms UNIQUES: ["al-Siddiqah"] (la Véridique)
-   - Kunya SI UNIQUE (ou QUASIMENT): ["Umm Abdullah"] (mère d'Abdullah)
-   
-   ❌ NE PAS INCLURE:
-   - Prénoms seuls: "Aïcha", "Abdullah" (trop communs, non-distinctifs)
-   - Titres génériques: "Mère des Croyants" (s'applique à 11 personnes)
-   - Articles seuls: "al-", "ibn", "bint"
-   
-   🎯 RÈGLE D'OR: Alias doit identifier UNIQUEMENT cette personne
-   
-   Exemples:
-   ✅ "Abu Bakr al-Siddiq" → aliases: ["Abdullah ibn Abi Quhafa", "al-Siddiq"]
-   ❌ PAS: ["Abu Bakr", "Abdullah"] (trop communs)
-   
-   ✅ "Aïcha bint Abi Bakr" → aliases: ["A'isha bint Abu Bakr", "Umm Abdullah"]
-   ❌ PAS: ["Aïcha", "عائشة"] seuls
-
-4. **Disambiguation par contexte**
-   - "Zaynab" seule = ambigu (2 Mères portent ce nom)
-   - → Zaynab bint Khuzayma vs Zaynab bint Jahsh
-   - Utilise contexte (tribu, événement, date) pour identifier
-
-5. **Tribus: Format précis**
-   - "Banu Hashim" (pas juste "Hashim")
-   - "Quraysh" (tribu mère)
-   - Sous-clans explicites si mentionnés
-
-6. **Dates: Conversion Hijri**
-   - Si texte dit "2 ans après Hijra" → "2 AH"
-   - Si date grégorienne → ajouter équivalent Hijri si possible
-
-FORMAT DE SORTIE JSON:
-
+### ✅ EXEMPLE DE SORTIE ATTENDUE :
+Texte : "Aïcha, fille d'Abu Bakr, était à Médine lors de la Hijra."
+JSON : 
 {{
     "entities": [
         {{
-            "name": "Nom complet canonique",
-            "normalized_name": "Version normalisée (lowercase, sans accents, avec honorific)",
-            "type": "Prophet|MotherBeliever|Sahabi|Sahabiya|AhlBayt|Tribe|Place|Battle|Event|Period|Concept",
-            "aliases": ["Variante1", "نسخة عربية", "Transliteration"],
-            "context_description": "Pourquoi cette entité dans ce chunk (1 phrase)",
-            "confidence": 0.0-1.0
-        }}
-    ]
-}}
-
-EXEMPLES CONCRETS:
-
-Texte: "Aïcha, la fille d'Abu Bakr, a participé à la bataille d'Uhud en apportant de l'eau."
-
-Extraction:
-{{
-    "entities": [
-        {{
-            "name": "Aïcha bint Abi Bakr",
+            "name": "Aïcha bint Abi Bakr RA",
             "normalized_name": "aicha bint abi bakr ra",
             "type": "MotherBeliever",
-            "aliases": ["Aïcha", "Aicha", "A'isha", "عائشة بنت أبي بكر"],
-            "context_description": "Mère des Croyants, fille d'Abu Bakr, a participé à Uhud",
+            "aliases": ["Aisha", "Umm al-Mu'minin"],
+            "context_description": "Épouse du Prophète et narratrice de hadiths",
             "confidence": 1.0
         }},
         {{
-            "name": "Abu Bakr al-Siddiq",
+            "name": "Abu Bakr al-Siddiq RA",
             "normalized_name": "abu bakr al siddiq ra",
             "type": "Sahabi",
-            "aliases": ["Abu Bakr", "أبو بكر الصديق", "Abdullah ibn Abi Quhafa"],
-            "context_description": "Père d'Aïcha, premier calife",
+            "aliases": ["Atiq"],
+            "context_description": "Père d'Aïcha et premier Calife",
             "confidence": 1.0
         }},
         {{
-            "name": "Battle of Uhud",
-            "normalized_name": "battle of uhud",
-            "type": "Battle",
-            "aliases": ["Uhud", "غزوة أحد", "Ghazwat Uhud"],
-            "context_description": "Bataille où Aïcha a apporté de l'eau aux combattants",
+            "name": "Medina",
+            "normalized_name": "medina",
+            "type": "Place",
+            "aliases": ["Yathrib"],
+            "context_description": "Lieu de résidence et point d'arrivée de la Hijra",
+            "confidence": 1.0
+        }},
+        {{
+            "name": "Hijra",
+            "normalized_name": "hijra",
+            "type": "Event",
+            "aliases": ["Migration"],
+            "context_description": "Événement marquant le début de l'ère islamique",
             "confidence": 1.0
         }}
     ]
 }}
-
-COMMENCE L'EXTRACTION (JSON uniquement, pas de commentaire):
 """
+SIRA_ENTITY_P1_USER = "Extrais les entités du CHUNK suivant au format JSON strict :\n\nCHUNK : {chunk_text}"
 
 # ============================================================
+# DOMAIN: SIRA - RELATION EXTRACTION (PASS 1)
+# ============================================================
 
-SIRA_ENTITY_PASS2_GLEANING = """
-Tu es un expert en REVIEW d'extraction d'entités pour la Sira.
+SIRA_RELATION_P1_SYSTEM = """Tu es un expert en analyse de graphes de connaissances spécialisé dans la Sira (biographie prophétique). 
+Ton rôle est d'extraire les relations entre des entités déjà identifiées.
 
-CONTEXTE DU DOCUMENT:
+### 📋 TAXONOMIE OFFICIELLE DES RELATIONS
+Voici les relations que tu DOIS utiliser, classées par domaine :
+
+1. FAMILIALES :
+   - MARRIED_TO : Mariage (symétrique).
+   - DAUGHTER_OF / SON_OF : Lien de l'enfant vers le parent.
+   - MOTHER_OF / FATHER_OF : Lien du parent vers l'enfant.
+   - SIBLING : Frère ou sœur.
+
+2. ÉVÉNEMENTIELLES :
+   - PARTICIPATED_IN : Pour les Sahabas ou Prophète dans une bataille/événement.
+   - WITNESSED : Témoin d'un événement sans combat direct.
+   - ORGANIZED : Responsable de la logistique ou commandement.
+   - DIED_IN : Lieu ou événement du décès.
+   - CONVERTED_TO_ISLAM_AT : Moment ou lieu de conversion.
+
+3. SPATIALES ET TRIBALES :
+   - LIVED_IN / BORN_IN / TRAVELED_TO : Liens géographiques.
+   - MEMBER_OF_TRIBE : Affiliation clanique (ex: Banu Hashim).
+   - ALLIED_WITH / BATTLED_WITH : Relations entre tribus ou groupes.
+
+4. TEMPORELLES ET SOURCES :
+   - OCCURRED_DURING : Lien entre un événement et une période/autre événement.
+   - BEFORE / AFTER : Chronologie relative.
+   - NARRATED_BY : Source d'une information (Hadith).
+
+### 📐 RÈGLES DE STRUCTURE (SCHÉMA)
+Respecte la logique métier suivante :
+- Un PROPHET peut être [MARRIED_TO, FATHER_OF, LIVED_IN, ORGANIZED].
+- Une MOTHER_BELIEVER peut être [MARRIED_TO, DAUGHTER_OF, MOTHER_OF, MEMBER_OF_TRIBE, PARTICIPATED_IN].
+- Un SAHABI peut être [PARTICIPATED_IN, WITNESSED, MEMBER_OF_TRIBE].
+- Une PLACE peut être le lien pour [BORN_IN, DIED_IN, LIVED_IN].
+
+### ⚠️ GESTION DES AMBIGUÏTÉS ET CAS COMPLEXES
+Pour garantir la cohérence du graphe, applique ces protocoles :
+
+1. ANONYMES ET PRONOMS : 
+   Si le texte dit "Son épouse l'accompagna", et que tu as extrait "Aïcha bint Abi Bakr RA" et "Muhammad ﷺ", crée la relation [Aïcha]-[:MARRIED_TO]->[Muhammad] même si le nom n'est pas répété dans la phrase, tant que l'entité est validée dans le chunk.
+
+2. RELATIONS BINAIRES : 
+   Certaines relations impliquent automatiquement la réciproque. Si A est MARRIED_TO B, ne crée qu'une seule flèche dans le JSON, le système de base de données gérera la symétrie. Priorise toujours le sens (Époux) -> (Épouse) ou (Enfant) -> (Parent).
+
+3. CONFLITS DE TYPES : 
+   Si une entité de type 'Place' est le sujet d'une action humaine (ex: "Médine a accueilli le Prophète"), transforme cela en [Muhammad]-[:MIGRATED_TO]->[Medina]. Une 'Place' ne peut pas être la source d'une action volontaire.
+
+4. HIÉRARCHIE TRIBALE : 
+   Si un individu appartient à un sous-clan (ex: Banu Hashim) et à une tribu mère (ex: Quraysh), crée deux relations MEMBER_OF_TRIBE distinctes si l'information est présente, sinon priorise le clan le plus spécifique mentionné.
+
+### 📚 EXEMPLE DE RÉFÉRENCE ENRICHI
+Texte : "À Médine, en l'an 3 de l'Hégire, Aïcha RA participa à Uhud en apportant de l'eau aux blessés."
+Entités : ["Aïcha bint Abi Bakr RA", "Bataille d'Uhud", "Médine"]
+JSON :
+{{
+  "relations": [
+    {{
+      "source": "Aïcha bint Abi Bakr RA",
+      "target": "Bataille d'Uhud",
+      "type": "PARTICIPATED_IN",
+      "evidence": "participa à Uhud en apportant de l'eau aux blessés",
+      "properties": {{
+        "date": "3 AH",
+        "location": "Mont Uhud",
+        "role": "Logistique et soins (apport d'eau)",
+        "context": "Pendant le combat"
+      }}
+    }}
+  ]
+}}
+"""
+
+SIRA_RELATION_P1_USER = """### CONTEXTE D'IDENTITÉ :
 {identity_context}
 
-CHUNK ANALYSÉ:
+### TEXTE DU CHUNK :
 {chunk_text}
 
-ENTITÉS DÉJÀ EXTRAITES (Pass 1):
-{entities_pass1}
+### ENTITÉS IDENTIFIÉES :
+{entity_names}
 
-MISSION: Trouve les entités RATÉES lors du Pass 1.
-
-ENTITÉS SOUVENT RATÉES:
-
-1. **Personnes mentionnées indirectement**
-   - "La fille du Prophète" → Fatima bint Muhammad
-   - "L'épouse d'Ali" → Fatima bint Muhammad
-   - "Le fils de Khadija" → Qasim ibn Muhammad (décédé enfant)
-
-2. **Lieux implicites**
-   - "La ville" (contexte Médine) → Medina
-   - "La maison" (si chez Prophète) → House of Prophet
-
-3. **Tribus via nisba (affiliation)**
-   - "al-Qurashi" → Tribe: Quraysh
-   - "al-Ansari" → Ansar (Helpers of Medina)
-
-4. **Événements non-nommés mais décrits**
-   - "Quand ils ont migré" → Hijra
-   - "Le jour de la grande victoire" → Battle of Badr
-
-5. **Concepts implicites**
-   - "Ceux qui ont émigré" → Muhajirun
-   - "Les auxiliaires" → Ansar
-
-6. **Variantes de noms déjà extraites**
-   - Pass 1 a "Aïcha", texte dit aussi "Umm Abdullah" (surnom d'Aïcha)
-   - → Ajouter alias, PAS nouvelle entité
-
-RÈGLES GLEANING:
-
-- ✅ Ajoute entité SI nouvelle personne/lieu/événement
-- ❌ N'ajoute PAS si juste variante nom déjà extrait
-- ✅ Ajoute si mention indirecte claire ("la fille du Prophète")
-- ❌ N'invente PAS d'entité si contexte ambigu
-
-FORMAT SORTIE JSON:
-
+### MISSION :
+Extrais les relations enrichies. Sois exhaustif sur les 'properties'.
+Format JSON attendu :
 {{
-    "additional_entities": [
-        {{
-            "name": "Nom complet",
-            "normalized_name": "version normalisée",
-            "type": "Type",
-            "aliases": ["variantes"],
-            "context_description": "Pourquoi ratée en Pass 1",
-            "confidence": 0.0-1.0
-        }}
-    ],
-    "rejected_candidates": [
-        {{
-            "candidate": "Nom candidat",
-            "reason": "Pourquoi rejeté (doublon/ambigu/etc)"
-        }}
-    ]
+  "relations": [
+    {{
+      "source": "nom",
+      "target": "nom",
+      "type": "TYPE_TAXONOMIE",
+      "evidence": "citation exacte du texte",
+      "properties": {{
+        "date": "...",
+        "role": "...",
+        "context": "..."
+      }}
+    }}
+  ]
 }}
-
-Si AUCUNE entité ratée, retourne:
-{{
-    "additional_entities": [],
-    "rejected_candidates": []
-}}
-
-COMMENCE LA REVIEW (JSON uniquement):
 """
 
+
+
+
+
+
+# ============================================================
+# SIRA - RELATION CONSOLIDATION (POST-PROCESSOR)
 # ============================================================
 
-SIRA_RELATION_PASS1 = """
-Tu es un expert en extraction de RELATIONS pour un Knowledge Graph Sira.
+RELATION_CONSOLIDATION_PROMPT = """
+Tu es un architecte de bases de données graphes expert en Sira.
+Ton rôle est de nettoyer et normaliser les types de relations extraits dans Neo4j pour garantir l'intégrité du Knowledge Graph.
 
-CONTEXTE DU DOCUMENT:
-{identity_context}
+### 📋 TAXONOMIE OFFICIELLE (CIBLE) :
+1. FAMILIALES : [MARRIED_TO, SON_OF, DAUGHTER_OF, MOTHER_OF, FATHER_OF, SIBLING]
+2. ÉVÉNEMENTIELLES : [PARTICIPATED_IN, WITNESSED, ORGANIZED, DIED_IN, CONVERTED_TO_ISLAM_AT]
+3. SPATIALES : [LIVED_IN, BORN_IN, TRAVELED_TO, MEMBER_OF_TRIBE]
+4. CHRONOLOGIQUES : [OCCURRED_DURING, BEFORE, AFTER, NARRATED_BY]
 
-CHUNK ANALYSÉ:
-{chunk_text}
+### 🔍 INPUT : Liste des relations actuellement présentes dans le graphe :
+{extracted_relations}
 
-ENTITÉS VALIDÉES DANS CE CHUNK:
-{final_entities}
+### 🎯 MISSION :
+Analyse les relations présentes et propose un mapping JSON pour les normaliser selon deux catégories :
 
-TYPES DE RELATIONS SIRA:
+1. **ALREADY_IN_TAXONOMY** : Pour chaque type "Officiel", liste les variantes synonymes trouvées dans l'input qui doivent fusionner vers lui.
+2. **NOT_IN_TAX_BUT_TO_MERGE** : Si tu trouves des groupes de synonymes qui ne sont PAS dans la taxonomie, regroupe-les (ex: ["AIDE", "ASSISTE", "SOUTIENT"]).
 
-**FAMILIALES (أنساب)**
+### ⚠️ RÈGLES DE DÉCISION :
+- Si un type est déjà identique à la taxonomie (ex: MARRIED_TO), ignore-le.
+- Transforme tout en UPPER_SNAKE_CASE (ex: "est né à" -> "BORN_IN").
+- Ne propose pas de fusion si le sens est différent (ex: "BORN_IN" et "LIVED_IN" sont distincts).
 
-1. MARRIED_TO (متزوج من)
-   - (Prophète)-[:MARRIED_TO]->(Mère des Croyants)
-   - Propriétés: {{date_hijri: "3 AH", location: "Medina"}}
-
-2. DAUGHTER_OF / SON_OF (ابنة / ابن)
-   - (Aïcha)-[:DAUGHTER_OF]->(Abu Bakr)
-   - (Fatima)-[:DAUGHTER_OF]->(Prophète)
-
-3. MOTHER_OF / FATHER_OF (أم / أب)
-   - (Khadija)-[:MOTHER_OF]->(Fatima)
-   - (Prophète)-[:FATHER_OF]->(Ibrahim)
-
-4. SIBLING (أخ / أخت)
-   - (Aïcha)-[:SIBLING]->(Asma bint Abi Bakr)
-   - Propriétés: {{type: "sister"}}
-
-5. UNCLE_OF / AUNT_OF (عم / عمة)
-   - (Hamza)-[:UNCLE_OF]->(Prophète)
-   - (Safiya)-[:AUNT_OF]->(Prophète)
-
-**TRIBALES (قبائل)**
-
-6. MEMBER_OF_TRIBE (عضو قبيلة)
-   - (Abu Bakr)-[:MEMBER_OF_TRIBE]->(Quraysh)
-   - (Aïcha)-[:MEMBER_OF_TRIBE]->(Banu Taym) [sous-clan Quraysh]
-   - Propriétés: {{clan: "Banu Hashim"}} si applicable
-
-**ÉVÉNEMENTIELLES (أحداث)**
-
-7. PARTICIPATED_IN (شارك في)
-   - (Aïcha)-[:PARTICIPATED_IN]->(Battle of Uhud)
-   - Propriétés: {{role: "Medical support", date: "3 AH"}}
-
-8. WITNESSED (شهد)
-   - (Sahabi)-[:WITNESSED]->(Treaty of Hudaybiya)
-   - Différence avec PARTICIPATED: Témoin passif vs acteur
-
-9. ORGANIZED / LED (نظم / قاد)
-   - (Prophète)-[:LED]->(Battle of Badr)
-   - (Khalid ibn Walid)-[:LED]->(Saraya expedition)
-
-10. DIED_IN (توفي في)
-    - (Hamza)-[:DIED_IN]->(Battle of Uhud)
-    - Propriétés: {{manner: "martyred", date: "3 AH"}}
-
-**SPATIALES (مكانية)**
-
-11. LIVED_IN (سكن في)
-    - (Prophète)-[:LIVED_IN]->(Mecca)
-    - Propriétés: {{period: "Before Hijra", duration_years: 40}}
-
-12. BORN_IN (ولد في)
-    - (Prophète)-[:BORN_IN]->(Mecca)
-    - Propriétés: {{date: "570 CE", location_detail: "Year of Elephant"}}
-
-13. TRAVELED_TO (سافر إلى)
-    - (Prophète)-[:TRAVELED_TO]->(Syria)
-    - Propriétés: {{purpose: "Trade", age: 25}}
-
-14. MIGRATED_TO (هاجر إلى)
-    - (Muhajirun)-[:MIGRATED_TO]->(Medina)
-    - Propriétés: {{event: "Hijra", year: "622 CE / 1 AH"}}
-
-**TEMPORELLES (زمنية)**
-
-15. OCCURRED_DURING (وقع في)
-    - (Battle of Badr)-[:OCCURRED_DURING]->(Medinan Period)
-    - Propriétés: {{date_hijri: "2 AH", season: "Ramadan"}}
-
-16. BEFORE / AFTER (قبل / بعد)
-    - (Battle of Uhud)-[:AFTER]->(Battle of Badr)
-    - Propriétés: {{time_gap: "1 year"}}
-
-**SOCIALES (اجتماعية)**
-
-17. TAUGHT (علّم)
-    - (Aïcha)-[:TAUGHT]->(Sahaba scholars)
-    - Propriétés: {{domain: "Hadith", student_count: "numerous"}}
-
-18. TRANSMITTED_HADITH_FROM (روى عن)
-    - (Aïcha)-[:TRANSMITTED_HADITH_FROM]->(Prophète)
-    - Propriétés: {{hadith_count: 2210, authenticity: "Sahih"}}
-
-19. PROTECTED / DEFENDED (حمى / دافع عن)
-    - (Hamza)-[:DEFENDED]->(Prophète)
-    - Contexte: Battle of Uhud
-
-RÈGLES D'EXTRACTION CRITIQUES:
-
-1. **Relations explicites uniquement**
-   - ✅ "Aïcha, fille d'Abu Bakr" → DAUGHTER_OF
-   - ❌ "Aïcha était sage" → PAS de relation (attribut personnel)
-
-2. **Direction des relations**
-   - Familiales: Enfant → Parent (DAUGHTER_OF, SON_OF)
-   - Mariage: Bidirectionnel MARRIED_TO (pas de direction)
-   - Événements: Personne → Événement (PARTICIPATED_IN)
-
-3. **Propriétés enrichies**
-   - Date (Hijri si possible): "3 AH", "Ramadan 2 AH"
-   - Lieu si pertinent: "Medina", "Mecca"
-   - Rôle si applicable: "commander", "medic", "witness"
-
-4. **Éviter inférences spéculatives**
-   - ✅ Texte dit "Aïcha a soigné les blessés à Uhud" → PARTICIPATED_IN
-   - ❌ Texte dit "Aïcha était jeune" → PAS de relation AGE (pas un triplet)
-
-5. **Relations multiples OK**
-   - (Aïcha)-[:DAUGHTER_OF]->(Abu Bakr)
-   - (Aïcha)-[:MARRIED_TO]->(Prophète)
-   - (Aïcha)-[:MEMBER_OF_TRIBE]->(Quraysh)
-   - Toutes valides simultanément
-
-FORMAT SORTIE JSON:
-
+### 📤 FORMAT DE SORTIE JSON STRICT :
 {{
-    "relations": [
-        {{
-            "source_entity": "Nom exact entité source",
-            "relation_type": "TYPE_RELATION",
-            "target_entity": "Nom exact entité cible",
-            "properties": {{
-                "date": "3 AH",
-                "location": "Medina",
-                "role": "participant"
-            }},
-            "context_evidence": "Citation exacte du texte justifiant cette relation",
-            "confidence": 0.0-1.0
-        }}
-    ]
+  "ALREADY_IN_TAXONOMY": {{
+    "OFFICIAL_TYPE_1": ["VARIANTE_A", "VARIANTE_B"],
+    "OFFICIAL_TYPE_2": ["VARIANTE_C"]
+  }},
+  "NOT_IN_TAX_BUT_TO_MERGE": [
+    ["SYNONYME_1", "SYNONYME_2", "SYNONYME_3"]
+  ]
 }}
-
-EXEMPLES CONCRETS:
-
-Texte: "Aïcha bint Abi Bakr, de la tribu Quraysh, a épousé le Prophète (ﷺ) à Médine. Elle a participé à Uhud en soignant les blessés."
-
-Extraction:
-{{
-    "relations": [
-        {{
-            "source_entity": "Aïcha bint Abi Bakr",
-            "relation_type": "DAUGHTER_OF",
-            "target_entity": "Abu Bakr al-Siddiq",
-            "properties": {{}},
-            "context_evidence": "Aïcha bint Abi Bakr (bint = fille de)",
-            "confidence": 1.0
-        }},
-        {{
-            "source_entity": "Aïcha bint Abi Bakr",
-            "relation_type": "MEMBER_OF_TRIBE",
-            "target_entity": "Quraysh",
-            "properties": {{}},
-            "context_evidence": "de la tribu Quraysh",
-            "confidence": 1.0
-        }},
-        {{
-            "source_entity": "Aïcha bint Abi Bakr",
-            "relation_type": "MARRIED_TO",
-            "target_entity": "Prophet Muhammad",
-            "properties": {{"location": "Medina"}},
-            "context_evidence": "a épousé le Prophète (ﷺ) à Médine",
-            "confidence": 1.0
-        }},
-        {{
-            "source_entity": "Aïcha bint Abi Bakr",
-            "relation_type": "PARTICIPATED_IN",
-            "target_entity": "Battle of Uhud",
-            "properties": {{"role": "Medical support"}},
-            "context_evidence": "a participé à Uhud en soignant les blessés",
-            "confidence": 1.0
-        }}
-    ]
-}}
-
-COMMENCE L'EXTRACTION (JSON uniquement):
 """
-
-# ============================================================
-
-SIRA_RELATION_PASS2_GLEANING = """
-Tu es un expert en REVIEW d'extraction de relations Sira.
-
-CONTEXTE DU DOCUMENT:
-{identity_context}
-
-CHUNK ANALYSÉ:
-{chunk_text}
-
-ENTITÉS VALIDÉES:
-{final_entities}
-
-RELATIONS DÉJÀ EXTRAITES (Pass 1):
-{relations_pass1}
-
-MISSION: Trouve les relations RATÉES lors du Pass 1.
-
-RELATIONS SOUVENT RATÉES:
-
-1. **Relations implicites via filiation**
-   - Texte: "La fille du Prophète a épousé Ali"
-   - Pass 1 a peut-être raté: (Ali)-[:MARRIED_TO]->(Fatima)
-   - OU raté: (Fatima)-[:DAUGHTER_OF]->(Prophète)
-
-2. **Relations via pronoms**
-   - "Aïcha et sa sœur Asma" → (Aïcha)-[:SIBLING]->(Asma)
-
-3. **Relations tribales indirectes**
-   - "al-Qurashi" mentionné → MEMBER_OF_TRIBE Quraysh
-
-4. **Relations temporelles**
-   - "Après Badr, Uhud a eu lieu" → (Uhud)-[:AFTER]->(Badr)
-
-5. **Relations enseignement/transmission**
-   - "Aïcha a transmis des hadiths" → TRANSMITTED_HADITH_FROM Prophète
-
-RÈGLES GLEANING:
-
-- ✅ Ajoute SI relation explicite mais ratée
-- ❌ N'ajoute PAS si spéculatif
-- ✅ Vérifie relations bidirectionnelles (MARRIED_TO)
-- ❌ Évite doublons (vérifier relations_pass1)
-
-FORMAT SORTIE JSON:
-
-{{
-    "additional_relations": [
-        {{
-            "source_entity": "Entity A",
-            "relation_type": "TYPE",
-            "target_entity": "Entity B",
-            "properties": {{}},
-            "context_evidence": "Pourquoi ratée en Pass 1",
-            "confidence": 0.0-1.0
-        }}
-    ],
-    "rejected_candidates": [
-        {{
-            "relation": "(A)-[TYPE]->(B)",
-            "reason": "Pourquoi rejeté (doublon/spéculatif)"
-        }}
-    ]
-}}
-
-Si AUCUNE relation ratée:
-{{
-    "additional_relations": [],
-    "rejected_candidates": []
-}}
-
-COMMENCE LA REVIEW (JSON uniquement):
-"""
-
-# ============================================================
-# STRUCTURE MODULAIRE POUR FUTURS DOMAINES
-# ============================================================
-
-PROMPTS_REGISTRY: Dict[str, Dict[str, str]] = {
+PROMPTS_REGISTRY = {
     "sira": {
-        "entity_pass1": SIRA_ENTITY_PASS1,
-        "entity_pass2": SIRA_ENTITY_PASS2_GLEANING,
-        "relation_pass1": SIRA_RELATION_PASS1,
-        "relation_pass2": SIRA_RELATION_PASS2_GLEANING,
-    },
-    # Future domaines:
-    # "fiqh": {
-    #     "entity_pass1": FIQH_ENTITY_PASS1,
-    #     ...
-    # },
-    # "hadith": {...},
+        "entities_p1": (SIRA_ENTITY_P1_SYSTEM, SIRA_ENTITY_P1_USER),
+        "relations_p1": (SIRA_RELATION_P1_SYSTEM, SIRA_RELATION_P1_USER),
+    }
 }
 
-def get_prompts(domain: str = "sira") -> Dict[str, str]:
-    """
-    Récupère les prompts pour un domaine spécifique
-    
-    Args:
-        domain: "sira" | "fiqh" | "hadith"
-    
-    Returns:
-        Dict avec entity_pass1, entity_pass2, relation_pass1, relation_pass2
-    """
-    if domain not in PROMPTS_REGISTRY:
-        raise ValueError(f"Domain '{domain}' not found. Available: {list(PROMPTS_REGISTRY.keys())}")
-    
-    return PROMPTS_REGISTRY[domain]
+def get_graph_prompt(domain: str, step: str) -> Tuple[str, str]:
+    """Retourne le tuple (System, User) pour le domaine et l'étape donnés."""
+    if domain not in PROMPTS_REGISTRY or step not in PROMPTS_REGISTRY[domain]:
+        raise ValueError(f"Prompt non trouvé pour {domain}/{step}")
+    return PROMPTS_REGISTRY[domain][step]
+
+
+

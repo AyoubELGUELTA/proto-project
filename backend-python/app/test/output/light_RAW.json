@@ -1,0 +1,527 @@
+{
+  "entities": [
+    {
+      "name": "Aïcha bint Abi Bakr RA",
+      "normalized_name": "aicha bint abi bakr ra",
+      "type": "MotherBeliever",
+      "aliases": [
+        "Aisha",
+        "Umm al-Mu'minin"
+      ],
+      "context_description": "Épouse du Prophète et narratrice de hadiths",
+      "confidence": 1.0
+    },
+    {
+      "name": "Muhammad ﷺ",
+      "normalized_name": "muhammad",
+      "type": "Prophet",
+      "aliases": [
+        "Le Prophète"
+      ],
+      "context_description": "Prophète de l'Islam",
+      "confidence": 1.0
+    },
+    {
+      "name": "Medina",
+      "normalized_name": "medina",
+      "type": "Place",
+      "aliases": [
+        "Yathrib"
+      ],
+      "context_description": "Lieu de résidence et point d'arrivée de la Hijra",
+      "confidence": 1.0
+    },
+    {
+      "name": "Abu Bakr al-Siddiq RA",
+      "normalized_name": "abu bakr al siddiq ra",
+      "type": "Sahabi",
+      "aliases": [
+        "Atiq"
+      ],
+      "context_description": "Père d'Aïcha et premier Calife",
+      "confidence": 1.0
+    },
+    {
+      "name": "Quraysh",
+      "normalized_name": "quraysh",
+      "type": "Tribe",
+      "aliases": [
+        "Banu Taym"
+      ],
+      "context_description": "Tribu à laquelle appartenait Aïcha",
+      "confidence": 1.0
+    },
+    {
+      "name": "Uhud",
+      "normalized_name": "uhud",
+      "type": "Battle/Event",
+      "aliases": [],
+      "context_description": "Bataille à laquelle Aïcha a participé",
+      "confidence": 1.0
+    },
+    {
+      "name": "Zubayr ibn al-Awwam RA",
+      "normalized_name": "zubayr ibn al awwam ra",
+      "type": "Sahabi",
+      "aliases": [],
+      "context_description": "Mari de la sœur d'Aïcha, Asma",
+      "confidence": 1.0
+    },
+    {
+      "name": "Asma bint Abi Bakr RA",
+      "normalized_name": "asma bint abi bakr ra",
+      "type": "MotherBeliever",
+      "aliases": [],
+      "context_description": "Sœur d'Aïcha",
+      "confidence": 1.0
+    },
+    {
+      "name": "Fatima az-Zahra",
+      "normalized_name": "fatima az zahra",
+      "type": "AhlBayt",
+      "aliases": [
+        "Fatima"
+      ],
+      "context_description": "Fille du Prophète Muhammad ﷺ et épouse d'Ali ibn Abi Talib",
+      "confidence": 1.0
+    },
+    {
+      "name": "Ali ibn Abi Talib",
+      "normalized_name": "ali ibn abi talib",
+      "type": "Sahabi",
+      "aliases": [
+        "Ali"
+      ],
+      "context_description": "Cousin et époux de Fatima, quatrième Calife",
+      "confidence": 1.0
+    },
+    {
+      "name": "Medina",
+      "normalized_name": "medina",
+      "type": "Place",
+      "aliases": [
+        "Yathrib"
+      ],
+      "context_description": "Lieu où a eu lieu le mariage de Fatima et Ali",
+      "confidence": 1.0
+    },
+    {
+      "name": "Battle of Badr",
+      "normalized_name": "battle of badr",
+      "type": "Battle/Event",
+      "aliases": [
+        "Badr"
+      ],
+      "context_description": "Conflit majeur dans l'histoire islamique, précédant le mariage de Fatima et Ali",
+      "confidence": 1.0
+    },
+    {
+      "name": "Hassan",
+      "normalized_name": "hassan",
+      "type": "AhlBayt",
+      "aliases": [
+        "Hassan ibn Ali"
+      ],
+      "context_description": "Petit-fils du Prophète Muhammad ﷺ, fils de Fatima et Ali",
+      "confidence": 1.0
+    },
+    {
+      "name": "Hussain",
+      "normalized_name": "hussain",
+      "type": "AhlBayt",
+      "aliases": [
+        "Hussain ibn Ali"
+      ],
+      "context_description": "Petit-fils du Prophète Muhammad ﷺ, fils de Fatima et Ali",
+      "confidence": 1.0
+    },
+    {
+      "name": "Muhammad ﷺ",
+      "normalized_name": "muhammad ﷺ",
+      "type": "Prophet",
+      "aliases": [
+        "Le Messager d'Allah"
+      ],
+      "context_description": "Prophète de l'Islam et père de Fatima",
+      "confidence": 1.0
+    },
+    {
+      "name": "Abyssinie",
+      "normalized_name": "abyssinie",
+      "type": "Place",
+      "aliases": [],
+      "context_description": "Région où les premiers musulmans ont trouvé refuge",
+      "confidence": 1.0
+    },
+    {
+      "name": "Muhajirun",
+      "normalized_name": "muhajirun",
+      "type": "Concept",
+      "aliases": [],
+      "context_description": "Musulmans qui ont émigré de La Mecque vers d'autres régions",
+      "confidence": 1.0
+    },
+    {
+      "name": "Uthman ibn Affan RA",
+      "normalized_name": "uthman ibn affan ra",
+      "type": "Sahabi",
+      "aliases": [
+        "Uthman"
+      ],
+      "context_description": "Compagnon du Prophète et troisième Calife",
+      "confidence": 1.0
+    },
+    {
+      "name": "Ruqayya bint Muhammad RA",
+      "normalized_name": "ruqayya bint muhammad ra",
+      "type": "MotherBeliever",
+      "aliases": [],
+      "context_description": "Épouse d'Uthman et fille du Prophète",
+      "confidence": 1.0
+    },
+    {
+      "name": "Hijra",
+      "normalized_name": "hijra",
+      "type": "Event",
+      "aliases": [
+        "Migration"
+      ],
+      "context_description": "Événement marquant le début de l'ère islamique",
+      "confidence": 1.0
+    },
+    {
+      "name": "Yathrib",
+      "normalized_name": "yathrib",
+      "type": "Place",
+      "aliases": [
+        "Médine"
+      ],
+      "context_description": "Ville où le Prophète et les musulmans se sont installés après la Hijra",
+      "confidence": 1.0
+    },
+    {
+      "name": "Médine",
+      "normalized_name": "medine",
+      "type": "Place",
+      "aliases": [
+        "Yathrib"
+      ],
+      "context_description": "Ville où le Prophète et les musulmans se sont installés après la Hijra",
+      "confidence": 1.0
+    },
+    {
+      "name": "Prophète ﷺ",
+      "normalized_name": "prophete ﷺ",
+      "type": "Prophet",
+      "aliases": [
+        "Muhammad"
+      ],
+      "context_description": "Messager de l'Islam",
+      "confidence": 1.0
+    },
+    {
+      "name": "Abu Bakr al-Siddiq RA",
+      "normalized_name": "abu bakr al siddiq ra",
+      "type": "Sahabi",
+      "aliases": [],
+      "context_description": "Père d'Aïcha et premier Calife",
+      "confidence": 1.0
+    },
+    {
+      "name": "grotte de Thawr",
+      "normalized_name": "grotte de thawr",
+      "type": "Place",
+      "aliases": [],
+      "context_description": "Lieu où le Prophète et Abu Bakr se sont cachés pendant la Hijra",
+      "confidence": 1.0
+    },
+    {
+      "name": "Khadija bint Khuwaylid RA",
+      "normalized_name": "khadija bint khuwaylid ra",
+      "type": "MotherBeliever",
+      "aliases": [
+        "Khadija"
+      ],
+      "context_description": "Première épouse du Prophète Muhammad ﷺ et riche marchande",
+      "confidence": 1.0
+    },
+    {
+      "name": "Banu Asad",
+      "normalized_name": "banu asad",
+      "type": "Tribe",
+      "aliases": [],
+      "context_description": "Clan auquel appartenait Khadija bint Khuwaylid",
+      "confidence": 1.0
+    },
+    {
+      "name": "Quraysh",
+      "normalized_name": "quraysh",
+      "type": "Tribe",
+      "aliases": [],
+      "context_description": "Tribu de la Mecque à laquelle appartenaient Khadija et Muhammad ﷺ",
+      "confidence": 1.0
+    },
+    {
+      "name": "Banu Hashim",
+      "normalized_name": "banu hashim",
+      "type": "Tribe",
+      "aliases": [],
+      "context_description": "Sous-clan de Quraysh auquel appartenait le Prophète Muhammad ﷺ",
+      "confidence": 1.0
+    },
+    {
+      "name": "Muhammad ﷺ",
+      "normalized_name": "muhammad ﷺ",
+      "type": "Prophet",
+      "aliases": [
+        "Muhammad ibn Abdullah"
+      ],
+      "context_description": "Prophète de l'Islam et époux de Khadija bint Khuwaylid RA",
+      "confidence": 1.0
+    },
+    {
+      "name": "Hamza ibn Abdul-Muttalib",
+      "normalized_name": "hamza ibn abdul muttalib",
+      "type": "Sahabi",
+      "aliases": [
+        "Hamza"
+      ],
+      "context_description": "Oncle paternel du Prophète Muhammad ﷺ et membre de Banu Hashim",
+      "confidence": 1.0
+    },
+    {
+      "name": "Muhammad ﷺ",
+      "normalized_name": "muhammad",
+      "type": "Prophet",
+      "aliases": [],
+      "context_description": "Prophète de l'islam et leader de la bataille de Badr",
+      "confidence": 1.0
+    },
+    {
+      "name": "Badr",
+      "normalized_name": "badr",
+      "type": "Place",
+      "aliases": [],
+      "context_description": "Lieu de la bataille entre les musulmans et l'armée mecquoise",
+      "confidence": 1.0
+    },
+    {
+      "name": "Quraysh",
+      "normalized_name": "quraysh",
+      "type": "Tribe",
+      "aliases": [],
+      "context_description": "Tribu mecquoise opposée aux musulmans lors de la bataille de Badr",
+      "confidence": 1.0
+    },
+    {
+      "name": "Ali ibn Abi Talib RA",
+      "normalized_name": "ali ibn abi talib ra",
+      "type": "Sahabi",
+      "aliases": [
+        "Ali"
+      ],
+      "context_description": "Cousin et gendre du Prophète, combattant à la bataille de Badr",
+      "confidence": 1.0
+    },
+    {
+      "name": "Hamza ibn Abdul-Muttalib RA",
+      "normalized_name": "hamza ibn abdul muttalib ra",
+      "type": "Sahabi",
+      "aliases": [
+        "Hamza"
+      ],
+      "context_description": "Oncle du Prophète et héros de la bataille de Badr",
+      "confidence": 1.0
+    },
+    {
+      "name": "Bilal ibn Rabah RA",
+      "normalized_name": "bilal ibn rabah ra",
+      "type": "Sahabi",
+      "aliases": [],
+      "context_description": "Compagnon du Prophète, connu pour avoir donné l'appel à la prière",
+      "confidence": 1.0
+    }
+  ],
+  "relations": [
+    {
+      "source": "Aïcha bint Abi Bakr RA",
+      "target": "Muhammad ﷺ",
+      "type": "MARRIED_TO",
+      "evidence": "a épousé le Prophète Muhammad (ﷺ)"
+    },
+    {
+      "source": "Aïcha bint Abi Bakr RA",
+      "target": "Abu Bakr al-Siddiq RA",
+      "type": "DAUGHTER_OF",
+      "evidence": "était la fille d'Abu Bakr al-Siddiq"
+    },
+    {
+      "source": "Asma bint Abi Bakr RA",
+      "target": "Zubayr ibn al-Awwam RA",
+      "type": "MARRIED_TO",
+      "evidence": "Sa sœur Asma bint Abi Bakr était mariée à Zubayr ibn al-Awwam"
+    },
+    {
+      "source": "Aïcha bint Abi Bakr RA",
+      "target": "Uhud",
+      "type": "PARTICIPATED_IN",
+      "evidence": "a participé à la bataille d'Uhud"
+    },
+    {
+      "source": "Aïcha bint Abi Bakr RA",
+      "target": "Medina",
+      "type": "LIVED_IN",
+      "evidence": "a épousé le Prophète Muhammad (ﷺ) à Médine"
+    },
+    {
+      "source": "Aïcha bint Abi Bakr RA",
+      "target": "Umm Sulaym",
+      "type": "PARTICIPATED_IN",
+      "evidence": "apportait de l'eau aux combattants blessés aux côtés d'Umm Sulaym"
+    },
+    {
+      "source": "Aïcha bint Abi Bakr RA",
+      "target": "Quraysh",
+      "type": "MEMBER_OF_TRIBE",
+      "evidence": "de la tribu Quraysh"
+    },
+    {
+      "source": "Fatima az-Zahra",
+      "target": "Ali ibn Abi Talib",
+      "type": "MARRIED_TO",
+      "evidence": "a épousé son cousin"
+    },
+    {
+      "source": "Fatima az-Zahra",
+      "target": "Hassan",
+      "type": "MOTHER_OF",
+      "evidence": "a donné naissance à Hassan"
+    },
+    {
+      "source": "Fatima az-Zahra",
+      "target": "Hussain",
+      "type": "MOTHER_OF",
+      "evidence": "a donné naissance à Hussain"
+    },
+    {
+      "source": "Muhammad ﷺ",
+      "target": "Fatima az-Zahra",
+      "type": "FATHER_OF",
+      "evidence": "la fille du Prophète"
+    },
+    {
+      "source": "Fatima az-Zahra",
+      "target": "Medina",
+      "type": "LIVED_IN",
+      "evidence": "mariage a eu lieu à Médine"
+    },
+    {
+      "source": "Battle of Badr",
+      "target": "Fatima az-Zahra",
+      "type": "OCCURRED_DURING",
+      "evidence": "mariage a eu lieu après la bataille de Badr"
+    },
+    {
+      "source": "Uthman ibn Affan RA",
+      "target": "Ruqayya bint Muhammad RA",
+      "type": "MARRIED_TO",
+      "evidence": "épouse de Uthman"
+    },
+    {
+      "source": "Muhajirun",
+      "target": "Abyssinie",
+      "type": "TRAVELED_TO",
+      "evidence": "a trouvé refuge auprès du Négus en Abyssinie"
+    },
+    {
+      "source": "Prophète ﷺ",
+      "target": "Abu Bakr al-Siddiq RA",
+      "type": "SIBLING",
+      "evidence": "se sont cachés ensemble dans la grotte de Thawr"
+    },
+    {
+      "source": "Prophète ﷺ",
+      "target": "grotte de Thawr",
+      "type": "LIVED_IN",
+      "evidence": "se sont cachés dans la grotte de Thawr"
+    },
+    {
+      "source": "Hijra",
+      "target": "Yathrib",
+      "type": "OCCURRED_DURING",
+      "evidence": "la grande Hijra vers Yathrib"
+    },
+    {
+      "source": "Yathrib",
+      "target": "Médine",
+      "type": "LIVED_IN",
+      "evidence": "Yathrib est devenu Médine"
+    },
+    {
+      "source": "Khadija bint Khuwaylid RA",
+      "target": "Muhammad ﷺ",
+      "type": "MARRIED_TO",
+      "evidence": "premier mariage avec le Prophète Muhammad"
+    },
+    {
+      "source": "Khadija bint Khuwaylid RA",
+      "target": "Banu Asad",
+      "type": "MEMBER_OF_TRIBE",
+      "evidence": "appartenait au clan Banu Asad"
+    },
+    {
+      "source": "Muhammad ﷺ",
+      "target": "Banu Hashim",
+      "type": "MEMBER_OF_TRIBE",
+      "evidence": "de Banu Hashim"
+    },
+    {
+      "source": "Hamza ibn Abdul-Muttalib",
+      "target": "Muhammad ﷺ",
+      "type": "SIBLING",
+      "evidence": "oncle paternel du Prophète"
+    },
+    {
+      "source": "Hamza ibn Abdul-Muttalib",
+      "target": "Banu Hashim",
+      "type": "MEMBER_OF_TRIBE",
+      "evidence": "membre de Banu Hashim"
+    },
+    {
+      "source": "Banu Hashim",
+      "target": "Quraysh",
+      "type": "MEMBER_OF_TRIBE",
+      "evidence": "sous-clan de Quraysh"
+    },
+    {
+      "source": "Muhammad ﷺ",
+      "target": "Badr",
+      "type": "ORGANIZED",
+      "evidence": "a dirigé 313 musulmans contre l'armée mecquoise"
+    },
+    {
+      "source": "Ali ibn Abi Talib RA",
+      "target": "Badr",
+      "type": "PARTICIPATED_IN",
+      "evidence": "a combattu vaillamment"
+    },
+    {
+      "source": "Hamza ibn Abdul-Muttalib RA",
+      "target": "Badr",
+      "type": "PARTICIPATED_IN",
+      "evidence": "a été un héros clé de cette victoire"
+    },
+    {
+      "source": "Bilal ibn Rabah RA",
+      "target": "Badr",
+      "type": "PARTICIPATED_IN",
+      "evidence": "a donné l'appel à la prière après la victoire"
+    },
+    {
+      "source": "Badr",
+      "target": "Quraysh",
+      "type": "BATTLED_WITH",
+      "evidence": "contre l'armée mecquoise de Quraysh"
+    }
+  ]
+}

@@ -1,52 +1,41 @@
-# --- Framework & Serveur ---
-fastapi==0.115.0
-uvicorn[standard]==0.30.0
-python-multipart==0.0.9
-python-dotenv==1.0.1
-pydantic==2.8.2
-pydantic-settings==2.4.0
+--extra-index-url https://download.pytorch.org/whl/cpu
 
-# --- Ingestion & PDF (Docling) ---
-docling>=2.55.0
-docling-core>=2.8.0
-# NumPy doit être < 2.0 pour compatibilité Docling
-numpy>=1.26.4,<2.0.0
-PyMuPDF>=1.23.0, <1.25.0
-boto3
-Pillow
-aiofiles
 
-# -- Llama-landex 'n graph-related dependecies --
+# Framework
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
 
+# Ingestion
+docling
+docling-core
+langchain-docling
+numpy
+PyMuPDF
+asyncpg
+
+
+# LangChain & Graph
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langgraph
+tiktoken
+
+# LlamaIndex
 llama-index-core
 llama-index-graph-stores-neo4j
 neo4j
-llama-index-llms-openai
 
-# Pour le nettoyage NER avancé
+# IA
+torch
+transformers
 gliner
+openai
 
-# --- LangChain --- INUTILE ??
-langchain>=0.3.0
-langchain-core>=0.3.0
-langchain-community==0.3.0
-langchain-openai==0.2.0
-langchain-docling>=0.1.0  
-
-# --- Bases de données ---
-asyncpg>=0.29.0
-sqlalchemy==2.0.30
-qdrant-client>=1.16.0
-# --- IA & Embeddings ---
-# PyTorch CPU-only (compatible Docling)
---extra-index-url https://download.pytorch.org/whl/cpu
-torch>=2.0.0,<2.7.0  # Versions compatibles Docling
-transformers>=4.45.0,<5.0.0
-sentence-transformers>=3.1.0
-onnxruntime
-openai>=1.40.0
-cohere>=5.5.0
-
-# --- Utilitaires ---
-requests==2.32.3
-python-magic==0.4.27
+# Utils
+python-dotenv
+python-magic
+requests
