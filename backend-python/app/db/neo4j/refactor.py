@@ -1,35 +1,40 @@
 import logging
 from app.db.neo4j.connection import Neo4jConnection
 from app.ingestion.graph_prompts import RELATION_CONSOLIDATION_PROMPT
+from app.ingestion.graph_schemas import RelationType
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
 async def run_graph_relation_optimization(llm_service: LLMService):
-    """
-    Orchestrateur du nettoyage : Audit Neo4j -> Mapping LLM -> Mutation Cypher.
-    """
     driver = await Neo4jConnection.get_driver()
     
     async with driver.session() as session:
-        # 1. AUDIT (Identique)
-        logger.info("🔍 Audit des types de relations dans Neo4j...")
+        # 1. Récupération des types réels en base
         result = await session.run("CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType")
-        extracted_types = [record["relationshipType"] async for record in result]
+        db_types = {record["relationshipType"] async for record in result} # On utilise un set {}
         
-        if not extracted_types:
-            logger.info("ℹ️ Aucune relation trouvée dans la base. Audit stoppé.")
+        # 2. Récupération de ta taxonomie officielle
+        official_set = {r.value for r in RelationType}
+
+        # 3. LE MINUS : On ne garde que ce qui n'est PAS officiel
+        # types_to_audit = Ce qui est en DB mais PAS dans l'officiel
+        types_to_audit = db_types - official_set
+
+        if not types_to_audit:
+            logger.info("✨ Graphe déjà 100% conforme à la taxonomie. Audit stoppé.")
             return
 
-        logger.info(f"📋 Types identifiés dans le graphe : {extracted_types}")
-
-        # 2. LLM : Dispatching System/User pour le Prompt Caching
-        logger.info("🤖 Arbitrage en cours par le LLM (Normalisation)...")
+        # 4. Préparation du prompt uniquement avec les suspects
+        formatted_extracted = "\n".join([f"- {t}" for t in types_to_audit])
+        formatted_taxonomy = ", ".join(list(official_set))
         
-        # On prépare le payload structuré
         payload = {
-            "system": RELATION_CONSOLIDATION_PROMPT,
-            "user": f"Voici les relations actuellement présentes dans le graphe Neo4j : {extracted_types}"
+            "system": RELATION_CONSOLIDATION_PROMPT.format(
+                official_taxonomy=formatted_taxonomy,
+                extracted_relations=formatted_extracted 
+            ),
+            "user": "Analyse ces types inconnus et propose un mapping vers la taxonomie ou des fusions entre eux."
         }
 
         # On passe le dictionnaire au service (qui gère maintenant le dispatch)

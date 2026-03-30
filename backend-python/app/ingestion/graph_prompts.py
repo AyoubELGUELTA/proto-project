@@ -16,19 +16,14 @@ SIRA_ENTITY_P1_SYSTEM = """Tu es un expert en généalogie et biographie prophé
 Ta mission est d'extraire les entités avec une précision académique pour construire un graphe de connaissances robuste.
 
 ### 📋 ONTOLOGIE ET TYPES AUTORISÉS :
-1. Prophet : Exclusivement pour Muhammad ﷺ.
-2. MotherBeliever : Épouses du Prophète (ex: Khadija RA).
-3. Sahabi/Sahabiya : Compagnons masculins/féminins.
-4. AhlBayt : Famille proche du Prophète.
-5. Tribe : Clans et tribus (ex: Banu Hashim, Quraysh).
-6. Place : Villes, montagnes, puits (ex: Yathrib, Badr, Mount Uhud).
-7. Battle/Event : Conflits ou événements majeurs (ex: Battle of Badr, Hijra).
-8. Concept : Termes techniques (ex: Ansar, Muhajirun, Revelation).
+{entity_taxonomy}
 
 ### 📏 RÈGLES DE NOMMAGE ET NORMALISATION :
 - Noms complets : Toujours extraire le nom long si présent (ex: "Hamza ibn Abdul-Muttalib").
 - Honorifics : Ajouter 'ﷺ' pour le Prophète, 'RA' pour les Compagnons.
 - Langue : Préférer la translittération standardisée.
+- Gestion des suffixes : Les titres honorifiques (ﷺ, RA, AS) doivent être inclus dans le champ "name", 
+mais ne doivent pas influencer la distinction de l'identité (ex: "Ali RA" et "Ali" sont la même personne).
 
 ### 🚫 PROTOCOLE D'EXCLUSION (NE PAS EXTRAIRE) :
 Pour éviter de polluer le graphe, ignore systématiquement les éléments suivants :
@@ -97,38 +92,19 @@ SIRA_ENTITY_P1_USER = "Extrais les entités du CHUNK suivant au format JSON stri
 SIRA_RELATION_P1_SYSTEM = """Tu es un expert en analyse de graphes de connaissances spécialisé dans la Sira (biographie prophétique). 
 Ton rôle est d'extraire les relations entre des entités déjà identifiées.
 
-### 📋 TAXONOMIE OFFICIELLE DES RELATIONS
-Voici les relations que tu DOIS utiliser, classées par domaine :
+📋 TAXONOMIE OFFICIELLE DES RELATIONS :
+{relation_taxonomy}
 
-1. FAMILIALES :
-   - MARRIED_TO : Mariage (symétrique).
-   - DAUGHTER_OF / SON_OF : Lien de l'enfant vers le parent.
-   - MOTHER_OF / FATHER_OF : Lien du parent vers l'enfant.
-   - SIBLING : Frère ou sœur.
+### MISSION :
+Extrais les relations enrichies. 
+IMPORTANT : Pour les champs 'source' et 'target', utilise EXACTEMENT les noms fournis dans la liste 'ENTITÉS IDENTIFIÉES'.
 
-2. ÉVÉNEMENTIELLES :
-   - PARTICIPATED_IN : Pour les Sahabas ou Prophète dans une bataille/événement.
-   - WITNESSED : Témoin d'un événement sans combat direct.
-   - ORGANIZED : Responsable de la logistique ou commandement.
-   - DIED_IN : Lieu ou événement du décès.
-   - CONVERTED_TO_ISLAM_AT : Moment ou lieu de conversion.
-
-3. SPATIALES ET TRIBALES :
-   - LIVED_IN / BORN_IN / TRAVELED_TO : Liens géographiques.
-   - MEMBER_OF_TRIBE : Affiliation clanique (ex: Banu Hashim).
-   - ALLIED_WITH / BATTLED_WITH : Relations entre tribus ou groupes.
-
-4. TEMPORELLES ET SOURCES :
-   - OCCURRED_DURING : Lien entre un événement et une période/autre événement.
-   - BEFORE / AFTER : Chronologie relative.
-   - NARRATED_BY : Source d'une information (Hadith).
-
-### 📐 RÈGLES DE STRUCTURE (SCHÉMA)
-Respecte la logique métier suivante :
-- Un PROPHET peut être [MARRIED_TO, FATHER_OF, LIVED_IN, ORGANIZED].
-- Une MOTHER_BELIEVER peut être [MARRIED_TO, DAUGHTER_OF, MOTHER_OF, MEMBER_OF_TRIBE, PARTICIPATED_IN].
-- Un SAHABI peut être [PARTICIPATED_IN, WITNESSED, MEMBER_OF_TRIBE].
-- Une PLACE peut être le lien pour [BORN_IN, DIED_IN, LIVED_IN].
+### 📐 EXEMPLES DE RELATIONS TYPIQUES
+Voici un exemple de relations typiques qu'on associe a différent type d'entity :
+- PROPHET -> [MARRIED_TO, PARENT_OF, LIVED_IN, ORGANIZED, ..].
+- Une MOTHER_BELIEVER -> [MARRIED_TO, DAUGHTER_OF, PARENT_OF, MEMBER_OF_TRIBE, PARTICIPATED_IN, ..].
+- Un SAHABI -> [PARTICIPATED_IN, WITNESSED, MEMBER_OF_TRIBE, ..].
+- Une PLACE peut être le lien pour [BORN_IN, DIED_IN, LIVED_IN, ..].
 
 ### ⚠️ GESTION DES AMBIGUÏTÉS ET CAS COMPLEXES
 Pour garantir la cohérence du graphe, applique ces protocoles :
@@ -140,7 +116,7 @@ Pour garantir la cohérence du graphe, applique ces protocoles :
    Certaines relations impliquent automatiquement la réciproque. Si A est MARRIED_TO B, ne crée qu'une seule flèche dans le JSON, le système de base de données gérera la symétrie. Priorise toujours le sens (Époux) -> (Épouse) ou (Enfant) -> (Parent).
 
 3. CONFLITS DE TYPES : 
-   Si une entité de type 'Place' est le sujet d'une action humaine (ex: "Médine a accueilli le Prophète"), transforme cela en [Muhammad]-[:MIGRATED_TO]->[Medina]. Une 'Place' ne peut pas être la source d'une action volontaire.
+   Si une entité de type 'Place' est le sujet d'une action humaine (ex: "Médine a accueilli le Prophète"), transforme cela en [Muhammad]-[:MIGRATED_TO]->[Medina]. Une 'Place' ne peut pas être la source d'une action volontaire techniquement.
 
 4. HIÉRARCHIE TRIBALE : 
    Si un individu appartient à un sous-clan (ex: Banu Hashim) et à une tribu mère (ex: Quraysh), crée deux relations MEMBER_OF_TRIBE distinctes si l'information est présente, sinon priorise le clan le plus spécifique mentionné.
@@ -205,15 +181,13 @@ Format JSON attendu :
 # SIRA - RELATION CONSOLIDATION (POST-PROCESSOR)
 # ============================================================
 
-RELATION_CONSOLIDATION_PROMPT = """
+RELATION_CONSOLIDATION_PROMPT = """"
 Tu es un architecte de bases de données graphes expert en Sira.
-Ton rôle est de nettoyer et normaliser les types de relations extraits dans Neo4j pour garantir l'intégrité du Knowledge Graph.
+Ton rôle est de nettoyer et normaliser les types de relations extraits dans Neo4j.
 
 ### 📋 TAXONOMIE OFFICIELLE (CIBLE) :
-1. FAMILIALES : [MARRIED_TO, SON_OF, DAUGHTER_OF, MOTHER_OF, FATHER_OF, SIBLING]
-2. ÉVÉNEMENTIELLES : [PARTICIPATED_IN, WITNESSED, ORGANIZED, DIED_IN, CONVERTED_TO_ISLAM_AT]
-3. SPATIALES : [LIVED_IN, BORN_IN, TRAVELED_TO, MEMBER_OF_TRIBE]
-4. CHRONOLOGIQUES : [OCCURRED_DURING, BEFORE, AFTER, NARRATED_BY]
+Tu dois impérativement mapper les relations vers ces types officiels si le sens concorde :
+{official_taxonomy}
 
 ### 🔍 INPUT : Liste des relations actuellement présentes dans le graphe :
 {extracted_relations}
@@ -240,6 +214,7 @@ Analyse les relations présentes et propose un mapping JSON pour les normaliser 
   ]
 }}
 """
+
 PROMPTS_REGISTRY = {
     "sira": {
         "entities_p1": (SIRA_ENTITY_P1_SYSTEM, SIRA_ENTITY_P1_USER),
@@ -249,6 +224,7 @@ PROMPTS_REGISTRY = {
 
 def get_graph_prompt(domain: str, step: str) -> Tuple[str, str]:
     """Retourne le tuple (System, User) pour le domaine et l'étape donnés."""
+
     if domain not in PROMPTS_REGISTRY or step not in PROMPTS_REGISTRY[domain]:
         raise ValueError(f"Prompt non trouvé pour {domain}/{step}")
     return PROMPTS_REGISTRY[domain][step]

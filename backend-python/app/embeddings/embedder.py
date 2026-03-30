@@ -14,42 +14,36 @@ else:
 
 
 
-
-async def vectorize_documents(docs): # docs which are the summarized chunks
-    """Convert summarized chunks dicts into embedding vectors"""
-
+async def vectorize_documents(docs):
     vectorized_docs = []
 
-
     for chunk in docs:
-        # ✅ Construire le texte enrichi avec le titre
         heading = chunk.get("heading_full", "")
         text = chunk.get("text", "")
+        visual = chunk.get("visual_summary", "")
         
+        # 1. On prépare le texte COMPLET pour l'embedding (Titre + Texte + Visuel)
+        # C'est ce mélange qui donne la meilleure "empreinte" sémantique
+        parts = []
         if heading and heading != "Sans titre":
-            # Ajouter le titre au début du texte pour l'embedding
-            enriched_text = f"# {heading}\n\n{text}"
-        else:
-            enriched_text = text
+            parts.append(f"# {heading}")
+        parts.append(text)
+        if visual:
+            parts.append(f"[VISUAL DESCRIPTION] {visual}")
+            
+        full_string_to_embed = "\n\n".join(parts)
 
-        embedding = await embedding_client.embed_documents(enriched_text)
+        # 2. Appel à l'embedding avec la version enrichie
+        embedding = await embedding_client.embed_documents(full_string_to_embed)
+        
         if isinstance(embedding, list) and len(embedding) > 0 and isinstance(embedding[0], list):
-            embedding = embedding[0]  # Extraire le vecteur réel
+            embedding = embedding[0]
         
-        if chunk["visual_summary"] != "": 
-            chunk_full_content = f"{chunk['text']}, [VISUAL DESCRIPTION] {chunk['visual_summary']}"
-        else :
-            chunk_full_content = chunk["text"]
-        
+        # 3. Stockage Qdrant
         vectorized_docs.append({
             "chunk_id": chunk["chunk_id"],
             "embedding": embedding,
-            "chunk_full_content": chunk_full_content
+            "chunk_full_content": full_string_to_embed # On stocke la version complète
         })
 
-    print(f"\n🔍 DEBUG embedding:")
-    print(f"  Type: {type(vectorized_docs[0]['embedding'])}")    
-
-    print("First chunk vector length:", len(vectorized_docs[0]["embedding"]))    
     return vectorized_docs
-

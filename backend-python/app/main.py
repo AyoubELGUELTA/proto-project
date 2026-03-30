@@ -11,23 +11,34 @@ from typing import List
 from .ingestion.pdf_loader import partition_document
 from .ingestion.chunker import create_chunks
 from .ingestion.create_identity_chunk import create_identity_chunk
+from .ingestion.graph_extraction_light import run_light_extraction
+from .ingestion.graph_post_processing import post_process_graph_extraction, prepare_for_post_processing
+
+from app.db.base import get_connection, release_connection
 from .db import (init_db, get_documents, get_or_create_document, store_chunks_batch, store_identity_chunk, 
                 fetch_identities_by_doc_ids, get_chunk_with_metadata, 
                 update_chunks_with_ai_data, link_entity_to_chunk, resolve_entity, finalize_entity_graph)
-from app.db.base import get_connection, release_connection
+from .db.neo4j.queries import ingest_graph_data 
+
 from .embeddings.embedder import vectorize_documents
+
 from .vector_store.qdrant_service import store_vectors_incrementally
+
 from .retrieval.retriever import retrieve_chunks
 from .retrieval.answer_generator import generate_answer_with_history
 from .retrieval.entity_resolver import resolve_entities_in_query
 from .retrieval.query_analyzer import analyze_and_rewrite_query, QueryType
 from .retrieval.strategies import select_strategy, VectorOnlyStrategy
+
 from .utils.chunks_ingest_processor import process_enriched_chunks, split_enriched_chunks
-from .utils.summarize_and_extract_entities import summarise_and_extract_entities
+from .utils.visual_enricher import enrich_chunks_with_visuals
+
 from app.core.tags_store import TagsStore
+
 from contextlib import asynccontextmanager
 
 from .benchmark_test import get_benchmark_config_rag, get_ingest_benchmark_config
+
 import aiofiles 
 import asyncio
 
@@ -175,29 +186,42 @@ async def ingest_single_file(file: UploadFile, config_id: str, background_tasks:
     # 5. Stockage des chunks bruts pour obtenir les UUIDs
     chunk_ids = await store_chunks_batch(enriched_chunks, doc_uuid)
 
-    # 6. IA : Synthèse visuelle ET Extraction d'entités (GraphRAG)
-    # On utilise ta nouvelle fonction groupée
-    enriched_results = await summarise_and_extract_entities(enriched_chunks, chunk_ids)
+    # 6. IA - PHASE A : Enrichissement pour la Vector DB (Qdrant)
+    # On crée une version ultra-light de ton summarizer qui ne fait QUE le visuel
+    visual_results = await enrich_chunks_with_visuals(enriched_chunks, chunk_ids)
     
-    # 7. Vectorisation (basée sur le texte enrichi par l'IA)
-    vectorised_chunks = await vectorize_documents(enriched_results) 
-    
-    # 8. Stockage Vectoriel
+    # 7. Vectorisation et stockage Qdrant -- prend en compte les visuals des chunks et les vectorisent aussi
+    vectorised_chunks = await vectorize_documents(visual_results) 
     await store_vectors_incrementally(vectorized_docs=vectorised_chunks, collection_name="dev_collection")
 
-    #9. FINALISATION DU GRAPHE D'ENTITÉS (Etabli les cooccurences + les refresh/make les global summaries si + de 5 chunks)
+    # 8. IA - PHASE B : Extraction pour le Graphe (Neo4j)
+    # Extraction brute (peut contenir des doublons comme "(Sayyida) Aisha" et "(Sayyida) Aïcha")
+    raw_entities, raw_relations = await run_light_extraction(
+        enriched_chunks, 
+        identity_data["identity_text"]
+    )
+
+    # 9. POST-PROCESS JSON 
+    # On nettoie AVANT d'envoyer en base. 
+    # C'est ici que ton clustering et ta validation théologique opèrent.
+    clean_entities, clean_relations, validation = await post_process_graph_extraction(
+        raw_entities, 
+        raw_relations
+    )
+
+    # 10. INGESTION NEO4J 
+    # On n'envoie que ce qui a été validé et dédoublonné.
+    if clean_entities:
+        await ingest_graph_data(clean_entities, clean_relations)
+
+    # 11. FINALISATION (Background)
+    # Ici, on ne fait QUE du Cypher pur pour les algos de graphe, ie : Réciprocité des relations, Global Merging (inter-documents), Algorithmes GDS
     background_tasks.add_task(finalize_entity_graph, doc_uuid)
 
     duration = round(time.perf_counter() - start_time, 2)
+
     print(f"📡 Vectorisation terminée en {duration}s. Finalisation du graphe lancée en tâche de fond.")
-    return {
-        "status": "success",
-        "doc_id": doc_uuid,
-        "filename": file.filename,
-        "chunks_count": len(chunk_ids),
-        "message": "Le document est prêt pour la recherche. Les résumés d'entités sont en cours de génération.",
-        "duration_to_vector": duration
-    }
+    return {"status": "success", "message": "Vector DB et Graph DB synchronisées."}
 chat_history = []
 
 
