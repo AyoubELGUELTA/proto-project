@@ -17,7 +17,7 @@ from .ingestion.graph_post_processing import post_process_graph_extraction, prep
 from app.db.base import get_connection, release_connection
 from .db import (init_db, get_documents, get_or_create_document, store_chunks_batch, store_identity_chunk, 
                 fetch_identities_by_doc_ids, get_chunk_with_metadata, 
-                update_chunks_with_ai_data, link_entity_to_chunk, resolve_entity, finalize_entity_graph)
+                update_chunks_with_ai_data)
 from .db.neo4j.queries import ingest_graph_data 
 
 from .embeddings.embedder import vectorize_documents
@@ -33,7 +33,6 @@ from .retrieval.strategies import select_strategy, VectorOnlyStrategy
 from .utils.chunks_ingest_processor import process_enriched_chunks, split_enriched_chunks
 from .utils.visual_enricher import enrich_chunks_with_visuals
 
-from app.core.tags_store import TagsStore
 
 from contextlib import asynccontextmanager
 
@@ -42,15 +41,7 @@ from .benchmark_test import get_benchmark_config_rag, get_ingest_benchmark_confi
 import aiofiles 
 import asyncio
 
-app = FastAPI(title="Dawask RAG Prototype")
-# Indispensable pour que l'UI (frontend) puisse appeler Docker (backend)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], # À restreindre en prod (ex: ["http://localhost:3000"])
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
 
 
 os.environ["PYTHONUTF8"] = "1"
@@ -59,6 +50,30 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("🚀 [BOOT] Initialisation du système...")
+    try:
+        await init_db()
+        print("✅ DB: Tables synchronisées.")
+        # ... le reste de ton code de boot ...
+    except Exception as e:
+        print(f"❌ [CRITICAL] Échec du boot : {e}")
+    yield
+    print("🛑 [SHUTDOWN] Nettoyage des ressources...")
+
+app = FastAPI(
+    title="Dawask RAG Prototype",
+    lifespan=lifespan  
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/") #allows to check if nodejs commuicate or not with fastapi, health check nothing more
 def read_root():
@@ -79,20 +94,6 @@ async def lifespan(app: FastAPI):
         # 1. Initialisation des tables (si nécessaire)
         await init_db()
         print("✅ DB: Tables synchronisées.")
-
-        
-        # 2. Chargement du cache de Tags pour le Query Analyzer
-        conn = await get_connection()
-        try:
-            tags = await conn.fetch("""
-                SELECT label, description 
-                FROM tags 
-                WHERE is_system = TRUE
-            """)
-            TagsStore.set_tags(tags)
-            print(f"🚀 CACHE: {len(tags)} tags chargés en RAM.")
-        finally:
-            await release_connection(conn)
 
     except Exception as e:
         print(f"❌ [CRITICAL] Échec du boot : {e}")
@@ -170,7 +171,7 @@ async def ingest_single_file(file: UploadFile, config_id: str, background_tasks:
     # 2. Parsing et Chunking initial
     doc = partition_document(file_path)
     chunks = create_chunks(doc, max_tokens=target_tokens)
-    
+    print("CHECKPOINT 1")
     # 3. Identity Chunk (Le contexte global du document)
     identity_data = await create_identity_chunk(doc=doc, doc_id=doc_uuid, doc_title=file.filename)
     await store_identity_chunk(
@@ -178,29 +179,33 @@ async def ingest_single_file(file: UploadFile, config_id: str, background_tasks:
         identity_text=identity_data["identity_text"], 
         pages_sampled=identity_data.get("pages_sampled", [])
     )
-    
+    print("CHECKPOINT 2")
+
     # 4. Enrichissement structurel (Headings, Tables, Images)
     enriched_chunks_raw = process_enriched_chunks(doc, chunks)          
     enriched_chunks = split_enriched_chunks(enriched_chunks_raw, max_tokens=target_tokens, overlap=overlap)
-    
+    print("CHECKPOINT 3")
+
     # 5. Stockage des chunks bruts pour obtenir les UUIDs
     chunk_ids = await store_chunks_batch(enriched_chunks, doc_uuid)
-
+    print("CHECKPOINT 4")
     # 6. IA - PHASE A : Enrichissement pour la Vector DB (Qdrant)
     # On crée une version ultra-light de ton summarizer qui ne fait QUE le visuel
     visual_results = await enrich_chunks_with_visuals(enriched_chunks, chunk_ids)
-    
+    print("CHECKPOINT 5")
     # 7. Vectorisation et stockage Qdrant -- prend en compte les visuals des chunks et les vectorisent aussi
     vectorised_chunks = await vectorize_documents(visual_results) 
     await store_vectors_incrementally(vectorized_docs=vectorised_chunks, collection_name="dev_collection")
-
+    print("CHECKPOINT 6")
     # 8. IA - PHASE B : Extraction pour le Graphe (Neo4j)
     # Extraction brute (peut contenir des doublons comme "(Sayyida) Aisha" et "(Sayyida) Aïcha")
     raw_entities, raw_relations = await run_light_extraction(
         enriched_chunks, 
         identity_data["identity_text"]
     )
-
+    print("CHECKPOINT 7")
+    print(f"📊 Extraction brute : {len(raw_entities)} entités")
+    
     # 9. POST-PROCESS JSON 
     # On nettoie AVANT d'envoyer en base. 
     # C'est ici que ton clustering et ta validation théologique opèrent.
@@ -209,14 +214,21 @@ async def ingest_single_file(file: UploadFile, config_id: str, background_tasks:
         raw_relations
     )
 
+    print("CHECKPOINT 8")
+    print(f"✨ Après nettoyage : {len(clean_entities)} entités")
+
+
     # 10. INGESTION NEO4J 
     # On n'envoie que ce qui a été validé et dédoublonné.
+
+
     if clean_entities:
         await ingest_graph_data(clean_entities, clean_relations)
+    print("CHECKPOINT 10/10")
 
     # 11. FINALISATION (Background)
     # Ici, on ne fait QUE du Cypher pur pour les algos de graphe, ie : Réciprocité des relations, Global Merging (inter-documents), Algorithmes GDS
-    background_tasks.add_task(finalize_entity_graph, doc_uuid)
+    # background_tasks.add_task(finalize_entity_graph, doc_uuid)
 
     duration = round(time.perf_counter() - start_time, 2)
 

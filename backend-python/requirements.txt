@@ -39,3 +39,8 @@ openai
 python-dotenv
 python-magic
 requests
+
+# Tests
+pytest
+pytest-asyncio
+fakeredis # fakeredis permet de simuler un serveur Redis en mémoire pour tes tests unitaires

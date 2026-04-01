@@ -4,7 +4,8 @@ Définit les types d'entités et relations spécifiques à la Sira
 TODO --> faire en sorte qu'il soit exhaustif a 99.9 prct a l'avenir ig
 """
 from enum import Enum
-from typing import List, Dict, Any
+from typing import List,Optional ,Dict, Any
+from pydantic import BaseModel, Field
 
 class EntityType(str, Enum):
     """
@@ -40,7 +41,7 @@ class EntityType(str, Enum):
 
     @classmethod
     def get_all_labels(cls, type_name: str) -> List[str]:
-        """Récupère le label principal + tous les parents définis (si y en a)."""
+        """Récupère le label principal + tous les parents définis (si il y en a)."""
         try:
             entity_enum = cls(type_name)
             return [entity_enum.value] + entity_enum.parents
@@ -55,6 +56,26 @@ class EntityType(str, Enum):
     @classmethod
     def get_llm_definitions(cls) -> str:
         return "\n".join([f"- {e.value}: {e.description}" for e in cls])
+    
+    @classmethod
+    def get_taxonomy(cls) -> str:
+        """
+        Génère une taxonomie propre et triée pour injection directe dans le prompt.
+        """
+        taxonomy_lines = ["### ENTITY TAXONOMY"]
+
+        # Tri par priorité décroissante
+        sorted_types = sorted(cls, key=lambda x: x.priority, reverse=True)
+
+        for e in sorted_types:
+            # Labels parents (héritage)
+            parents = f" (Inherits: {', '.join(e.parents)})" if e.parents else ""
+            
+            # Format: - TYPE (Priorité): Description (Héritage)
+            line = f"- **{e.value}** ({e.priority}): {e.description}{parents}"
+            taxonomy_lines.append(line)
+
+        return "\n".join(taxonomy_lines)
 
 class RelationType(str, Enum):
     """
@@ -118,3 +139,15 @@ VALIDATION_RULES = {
     "max_prophets": 1,
     "max_mothers_believers": 11,
 }
+
+
+
+class TextUnit(BaseModel):
+    """Représente un fragment de texte enrichi prêt pour l'extraction de graphe."""
+    id: str = Field(..., description="Hash unique du contenu")
+    text: str
+    headings: List[str] = []
+    page_numbers: List[int] = []
+    tables: List[str] = []  # Markdown
+    images_b64: List[str] = []
+    metadata: dict = {}

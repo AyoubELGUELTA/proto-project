@@ -8,7 +8,6 @@ import json
 import re
 from typing import Dict, List, Any
 from .answer_generator import call_gpt_4o_mini
-from app.core.tags_store import TagsStore
 
 class QueryType:
     """Types de questions identifiées"""

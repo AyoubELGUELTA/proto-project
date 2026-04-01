@@ -2,6 +2,7 @@
 Configuration centralisée - Load .env une seule fois
 """
 import os
+from pydantic_settings import BaseSettings
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -30,3 +31,10 @@ if not NEO4J_PASSWORD:
     raise ValueError("NEO4J_PASSWORD not set in .env")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY not set in .env")
+
+
+class Settings(BaseSettings):
+
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
+
+settings = Settings()

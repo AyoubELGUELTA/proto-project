@@ -1,6 +1,6 @@
 import re
 import unicodedata
-import difflib
+from difflib import SequenceMatcher
 
 def similarity(a: str, b: str) -> float:
     """Calcule similarité entre 2 strings (0.0 à 1.0)"""

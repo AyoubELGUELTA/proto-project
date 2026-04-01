@@ -1,10 +1,10 @@
 import json
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Set, Tuple, Any
 from collections import defaultdict
 from openai import AsyncOpenAI
 from app.core.config import OPENAI_API_KEY
 from app.utils.text_utils import normalize_entity_name, similarity
-from app.models.graph_schema import EntityType
+from app.models.graph_schemas import EntityType
 
 # ============================================================
 # CLUSTERING - CONNECTED COMPONENTS

@@ -6,7 +6,7 @@ from app.services.llm_service import LLMService
 
 from app.ingestion.graph_prompts import get_graph_prompt 
 from app.models.graph_schemas import EntityType, RelationType
-
+from app.utils.text_utils import normalize_entity_name
 
 logger = logging.getLogger(__name__)
 SEMAPHORE = asyncio.Semaphore(15) 

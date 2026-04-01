@@ -39,6 +39,7 @@ services:
       - postgres
       - qdrant
       - neo4j 
+      - redis
     restart: unless-stopped
 
   # --- Node.js : Backend / Gateway ---
@@ -87,6 +88,12 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
+
+  redis:
+    image: redis:alpine
+    container_name: sira_redis # <--- AJOUT : Nom fixe pour le DNS Docker
+    ports:
+      - "6379:6379"
 
 volumes:
   qdrant_data:

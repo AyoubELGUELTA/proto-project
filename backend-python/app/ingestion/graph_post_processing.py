@@ -5,6 +5,7 @@ Post-processing Graph RAG - Deduplication par Clustering + LLM ciblé
 from typing import List, Dict, Tuple, Any
 from app.utils.text_utils import normalize_entity_name
 from app.logic import graph_cleaner as gc
+from app.models.graph_schemas import EntityType, RelationType
 
 
 
@@ -70,7 +71,7 @@ async def deduplicate_entities_clustered(
         if len(cluster_entities) > 15:
             print(f"       ⚠️  Large cluster ({len(cluster_entities)} entities) - using gpt-4o")
         
-        decision = await gc.arbitrate_cluster_llm(cluster_entities, idx)
+        decision = await gc.arbitrate_cluster_llm(cluster_entities, idx, EntityType.get_taxonomy())
         llm_decisions.append(decision)
         
         # Log actions
@@ -85,30 +86,6 @@ async def deduplicate_entities_clustered(
     # entities_dedup: liste d'objets entités fusionnés
     # name_mapping: Dict[old_id, new_id]
 
-    entities_dedup, name_mapping = gc.apply_cluster_decisions(entities, multi_clusters, llm_decisions)
-    
-    # PHASE 5: Update relations (Rewiring)
-    # On utilise ENFIN la fonction dédiée de graph_cleaner
-    print("  🔗 Phase 5: Update relations (Rewiring)...")
-    relations_updated = gc.rewire_relations(relations, name_mapping)
-    
-    return entities_dedup, relations_updated
-
-
-# ============================================================
-# PIPELINE COMPLÈTE
-# ============================================================
-
-async def deduplicate_entities_clustered(
-    entities: List[Dict[str, Any]],
-    relations: List[Dict[str, Any]]
-) -> Tuple[List[Dict], List[Dict]]:
-    # ... (Phases 1 à 3 identiques) ...
-
-    # PHASE 4: Apply decisions
-    print("\n  🔨 Phase 4: Apply merges...")
-    # entities_dedup: liste d'objets entités fusionnés
-    # name_mapping: Dict[old_id, new_id]
     entities_dedup, name_mapping = gc.apply_cluster_decisions(entities, multi_clusters, llm_decisions)
     
     # PHASE 5: Update relations (Rewiring)

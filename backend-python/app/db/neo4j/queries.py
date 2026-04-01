@@ -1,6 +1,7 @@
 import logging
 from typing import List, Dict
 from app.db.neo4j.connection import Neo4jConnection
+from app.models.graph_schemas import EntityType
 
 logger = logging.getLogger(__name__)
 

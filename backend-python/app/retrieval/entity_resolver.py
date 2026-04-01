@@ -1,6 +1,5 @@
 from typing import List, Dict, Any, Optional
 from app.db.base import get_connection, release_connection
-from app.db.entities import normalize_entity_name
 
 async def resolve_entities_in_query(entities_mentioned: List[Dict]) -> List[Dict[str, Any]]:
     """

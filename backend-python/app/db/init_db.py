@@ -1,5 +1,4 @@
 from .base import get_connection, release_connection
-from app.db.entities import normalize_entity_name
 
 async def init_db():
     """
@@ -54,6 +53,9 @@ async def init_db():
         
     finally:
         await release_connection(conn)
+
+
+
 
 
 system_tags = [

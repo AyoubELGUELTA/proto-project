@@ -45,3 +45,4 @@ npm-debug.log*
 uploads/
 data/pdf/
 *.pdf
+backend-python/app/tests/data/output/*
