@@ -18,26 +18,41 @@ class IdentityService:
         }
 
     def _get_toc_units(self, units: list) -> str:
-        """Scan les TextUnit pour trouver le squelette du document."""
+        """
+        Tente de trouver le sommaire explicite, 
+        sinon collecte les 15-20 premiers titres uniques (headings).
+        """
         toc_content = []
+        seen_headings = []
         
         for u in units:
+            if u.headings:
+                # On prend le dernier titre de la hiérarchie (le plus spécifique)
+                current_h = u.headings[-1] 
+                if current_h not in seen_headings:
+                    seen_headings.append(current_h)
+
             headings_text = " ".join(u.headings).lower() if u.headings else ""
             
-            # Si un des mots-clés est présent dans les headings
-            if any(kw in headings_text for kw in self.toc_keywords):
-                toc_content.append(u.text)
-            
-            # Sécurité : si le document est court et que le mot-clé est dans le corps
-          
-            elif any(kw in u.text[:200].lower() for kw in self.toc_keywords):
-                 toc_content.append(u.text)
+            # Si un mot-clé "Sommaire" est trouvé (titre ou début de texte)
+            if any(kw in headings_text for kw in self.toc_keywords) or \
+            any(kw in u.text[:200].lower() for kw in self.toc_keywords):
+                
+                if u.text not in toc_content:
+                    toc_content.append(u.text)
 
-            if len(toc_content) >= 3:
-                break 
-            
-        return "\n".join(toc_content)
-    
+        
+        # Si on a trouvé un vrai sommaire, on le privilégie
+        if len(toc_content) >= 1:
+            return "\n--- EXPLICIT TOC FOUND ---\n" + "\n".join(toc_content[:3])
+        
+        # Sinon, on renvoie la liste des titres uniques (le "squelette")
+        if seen_headings:
+            skeleton = seen_headings[:20] 
+            return "\n--- DOCUMENT SKELETON (INFERRED HEADINGS) ---\n" + " > ".join(skeleton)
+
+        return "No structure detected."
+        
     async def generate_identity(self, units: list) -> dict:
         if not units: return {}
 

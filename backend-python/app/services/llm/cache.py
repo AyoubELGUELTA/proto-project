@@ -1,28 +1,29 @@
+
 import redis
 import json
 import hashlib
 import logging
 from typing import List, Optional, Any
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class LLMCache:
     """
     Système de persistance pour les réponses LLM basé sur Redis.
-    
-    Permet d'éviter de re-payer et d'attendre pour des requêtes identiques,
-    tout en garantissant la cohérence des données via un hachage des messages.
     """
     
-    def __init__(self):
-        """
-        Initialise la connexion à Redis et définit la durée de vie (TTL) du cache.
-        """
-        
-        self.client = redis.from_url(settings.REDIS_URL, decode_responses=True)
-        self.ttl = 3600 * 24 * 7
+    def __init__(self, redis_url: str):
 
+        try:
+            self.client = redis.from_url(redis_url, decode_responses=True)
+            # Test de connexion rapide
+            self.client.ping()
+        except redis.RedisError as e:
+            logger.error(f"❌ Impossible de se connecter à Redis : {e}")
+            self.client = None
+
+        self.ttl = 3600 * 24 * 7  # 7 jours
+            
     def _generate_key(self, messages: List[Any]) -> str:
         """
         Crée une clé unique (empreinte digitale) à partir des messages envoyés au LLM.

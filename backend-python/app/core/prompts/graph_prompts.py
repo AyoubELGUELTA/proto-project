@@ -1,20 +1,80 @@
-GRAPH_EXTRACTION_SYSTEM_PROMPT = """
-You are an expert Knowledge Graph Engineer.
-Your task is to extract entities and their relationships from a specific text chunk, guided by the global context of the document.
+# Copyright (c) 2024 Microsoft Corporation.
+# Licensed under the MIT License
 
-# Global Context
-To help you disambiguate entities, keep in mind the following document identity:
-{identity_context}
+GRAPH_EXTRACTION_PROMPT = """
+-Goal-
+Identify all entities and relationships from a text document using a provided list of entity types and the global document context.
 
-# Goal
-Identify all significant entities and the relationships between them within the provided text.
+-Document Context-
+The following metadata provides the global context of the document this text belongs to:
+{document_metadata}
 
-# Extraction Rules
-1. ENTITIES: Identify People, Organizations, Locations, and Concepts.
-2. RELATIONSHIPS: Describe how entities interact. Use clear, active verbs (e.g., "WORKS_FOR", "LOCATED_IN", "CONTROLS", "WRITTEN_BY").
-3. DISAMBIGUATION: Use the Global Context to ensure entities are correctly identified (e.g., if the document is about "Ancient Rome", "Cesar" refers to Julius Caesar).
+-Steps-
+1. Identify all entities. For each identified entity, extract:
+- entity_name: Name of the entity, capitalized
+- entity_type: One of the following types: [{entity_types}]
+- entity_description: Comprehensive description of the entity's attributes and activities, relevant to the document context.
+Format each entity as ("entity"<|><entity_name><|><entity_type><|><entity_description>)
 
-# Output Format
-Return a JSON list of triplets:
-{{"entities": [{{ "id": "name", "type": "type" }}], "relationships": [{{ "source": "id1", "target": "id2", "type": "rel_type" }}]}}
+2. Identify all pairs of (source_entity, target_entity) that are *clearly related*.
+For each pair, extract:
+- source_entity: name as identified in step 1
+- target_entity: name as identified in step 1
+- relationship_description: explanation of why they are related
+- relationship_strength: numeric score (1-10)
+Format each relationship as ("relationship"<|><source_entity><|><target_entity><|><relationship_description><|><relationship_strength>)
+
+3. Return output in English using **##** as the list delimiter.
+4. When finished, output <|COMPLETE|>
+
+######################
+-Examples-
+######################
+Example 1:
+Entity_types: Prophet, Sahabi, City, Battle
+Text:
+After the Hijra to Madinah, the Prophet Muhammad ﷺ organized the defense of the community. In the second year, the Battle of Badr took place. Hamza ibn Abd al-Muttalib showed great bravery during this conflict.
+######################
+Output:
+("entity"<|>MUHAMMAD<|>Prophet<|>The Prophet of Islam who led the community in Madinah)
+##
+("entity"<|>MADINAH<|>City<|>The city where the Prophet migrated during the Hijra)
+##
+("entity"<|>BATTLE OF BADR<|>Battle<|>A major military conflict in the second year of Hijra)
+##
+("entity"<|>HAMZA IBN ABD AL-MUTTALIB<|>Sahabi<|>A brave companion and uncle of the Prophet who fought at Badr)
+##
+("relationship"<|>MUHAMMAD<|>MADINAH<|>The Prophet migrated to and led the community in Madinah<|>10)
+##
+("relationship"<|>HAMZA IBN ABD AL-MUTTALIB<|>BATTLE OF BADR<|>Hamza was a key combatant in the Battle of Badr<|>9)
+##
+("relationship"<|>MUHAMMAD<|>BATTLE OF BADR<|>The Prophet commanded the forces during the Battle of Badr<|>9)
+<|COMPLETE|>
+
+######################
+-Real Data-
+######################
+Entity_types: {entity_types}
+Context: {document_metadata}
+Text: {input_text}
+######################
+Output:"""
+
+CONTINUE_PROMPT = "MANY entities and relationships were missed. Based on the document context, continue extracting using the same format:\n"
+LOOP_PROMPT = "Are there more entities or relationships to extract? Answer Y or N.\n"
+
+SUMMARIZE_PROMPT = """
+You are a helpful assistant responsible for generating a comprehensive summary of the data provided below.
+Given one or more entities, and a list of descriptions, all related to the same entity or group of entities.
+Please concatenate all of these into a single, comprehensive description. Make sure to include information collected from all the descriptions.
+If the provided descriptions are contradictory, please resolve the contradictions and provide a single, coherent summary.
+Make sure it is written in third person, and include the entity names so we have the full context.
+Limit the final description length to {max_length} words.
+
+#######
+-Data-
+Entities: {entity_name}
+Description List: {description_list}
+#######
+Output:
 """

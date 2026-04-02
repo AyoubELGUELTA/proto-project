@@ -1,36 +1,17 @@
-# app/services/llm/service.py
 from typing import List, Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from app.services.llm.client import LLMClient
-from app.services.llm.tracker import LLMTracker
 from app.services.llm.parser import LLMParser
-from app.services.llm.cache import LLMCache
+from .factory import LLMFactory
+from .parser import LLMParser
+from app.core.config.llm_config import LLMConfig
 
 class LLMService:
-    """
-    Point d'entrée unique (Façade) orchestrant les services LLM.
-    
-    Centralise le tracking de consommation, la gestion du cache Redis,
-    la résilience des appels et le parsing des formats (JSON ou Tuples).
-    """
-
-    def __init__(self, model_name: str = "gpt-4o-mini"):
-        """
-        Initialise l'ensemble de la stack LLM.
-        
-        Args:
-            model_name (str): Le nom du modèle par défaut à utiliser.
-        """
-        self.tracker = LLMTracker()
-        self.cache = LLMCache()
+    def __init__(self, config: LLMConfig = None):
+        self.client = LLMFactory.create_client(config)
         self.parser = LLMParser()
-        # Le client reçoit le tracker et le cache pour être autonome
-        self.client = LLMClient(
-            model_name=model_name, 
-            tracker=self.tracker, 
-            cache=self.cache
-        )
+        # On accède au tracker via le client pour les rapports
+        self.tracker = self.client.tracker
 
     async def extract_tuples(self, system_prompt: str, user_prompt: str) -> List[List[str]]:
         """

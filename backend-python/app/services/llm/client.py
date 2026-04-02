@@ -4,6 +4,8 @@ from langchain_openai import ChatOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 from app.services.llm.tracker import LLMTracker
 from app.services.llm.cache import LLMCache
+from app.core.config.llm_config import LLMConfig
+from app.core.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -14,18 +16,19 @@ class LLMClient:
     Cette classe est le seul point de contact direct avec les APIs de modèles (OpenAI/Gemini).
     """
 
-    def __init__(self, model_name: str, tracker: LLMTracker, cache: LLMCache, temperature: float = 0):
-        """
-        Args:
-            model_name (str): Identifiant du modèle (ex: 'gpt-4o-mini').
-            tracker (LLMTracker): Instance pour le suivi des coûts et tokens.
-            cache (LLMCache): Instance Redis pour le cache des réponses.
-            temperature (float): Degré de créativité du modèle (0 pour l'extraction).
-        """
-        self.model_name = model_name
+    def __init__(self, config: LLMConfig, api_key: str, tracker: LLMTracker, cache: LLMCache):
+        self.config = config 
         self.tracker = tracker
         self.cache = cache
-        self.llm = ChatOpenAI(model=model_name, temperature=temperature)
+        self.model_name = config.model_name 
+
+        self.llm = ChatOpenAI(
+            model=self.model_name, 
+            openai_api_key=api_key, 
+            temperature=config.temperature,
+            max_retries=config.max_retries,
+            streaming=True
+        )
 
     async def ask(self, messages: list) -> str:
         """
