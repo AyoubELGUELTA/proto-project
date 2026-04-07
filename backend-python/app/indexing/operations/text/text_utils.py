@@ -41,8 +41,8 @@ def normalize_entity_name(name: str) -> str:
     normalized = normalized.replace('yy', 'y')
     normalized = normalized.replace('ss', 's')
     
-    # 8. ch → sh (variante arabe)
-    normalized = re.sub(r'ch\b', 'sh', normalized)
+    # 8. sh → ch (variante arabe)
+    normalized = re.sub(r'sh\b', 'ch', normalized)
     
     # 9. Supprime espaces multiples
     normalized = re.sub(r'\s+', ' ', normalized).strip()

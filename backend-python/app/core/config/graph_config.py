@@ -8,3 +8,6 @@ class ExtractionConfig(BaseModel):
 class SummarizationConfig(BaseModel):
     max_summary_length: int = 500  # mots
     max_input_tokens: int = 2000
+
+class EntityResolvingConfig(BaseModel):
+    max_cluster_batch: int = 22

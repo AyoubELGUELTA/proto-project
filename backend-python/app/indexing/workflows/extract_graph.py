@@ -1,59 +1,25 @@
 import logging
+from typing import List, Dict, Any, Tuple
 import pandas as pd
-from typing import List, Tuple, Dict, Any
-from app.indexing.operations.graph.graph_extractor import GraphExtractor
-from app.indexing.operations.graph.utils import filter_orphan_relationships
+from app.services.graph.graph_service import GraphService
 
 logger = logging.getLogger(__name__)
 
 async def extract_graph(
-    text_units: List[Dict[str, Any]],
-    extractor: GraphExtractor,
+    text_units: List[Any],
+    graph_service: GraphService,
+    domain_context: str
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Orchestre l'extraction sur tous les chunks et fusionne les résultats (Merging).
+    Workflow orchestrateur. Il reçoit les text_units et délègue l'extraction 
+    et le premier nettoyage au GraphService.
     """
-    all_entity_dfs = []
-    all_relation_dfs = []
-
-    for unit in text_units:
-        # 1. Extraction via LLM + Parser
-        ent_df, rel_df = await extractor(
-            text=unit["text"],
-            metadata=unit.get("metadata", {}),
-            source_id=unit["id"]
-        )
-        all_entity_dfs.append(ent_df)
-        all_relation_dfs.append(rel_df)
-
-    if not all_entity_dfs:
-        return pd.DataFrame(), pd.DataFrame()
-
-    # 2. Merge Entities (Groupby Title + Type)
-    entities = pd.concat(all_entity_dfs, ignore_index=True)
-    entities = (
-        entities.groupby(["title", "type"], sort=False)
-        .agg({
-            "description": list,  # On collecte pour le futur Summarizer
-            "source_id": list,
-        })
-        .reset_index()
+    logger.info(f"Starting graph extraction for {len(text_units)} units.")
+    
+    # On utilise la méthode run_pipeline du service (Parallelism + Summarization)
+    entities_df, relationships_df = await graph_service.run_pipeline(
+        text_units=text_units,
+        domain_context=domain_context
     )
-    entities["frequency"] = entities["source_id"].apply(len)
-
-    # 3. Merge Relationships (Groupby Source + Target)
-    relationships = pd.concat(all_relation_dfs, ignore_index=True)
-    relationships = (
-        relationships.groupby(["source", "target"], sort=False)
-        .agg({
-            "description": list,
-            "weight": "sum",
-            "source_id": list
-        })
-        .reset_index()
-    )
-
-    # 4. Filter Orphans (Clean pointers to non-existent entities)
-    relationships = filter_orphan_relationships(relationships, entities)
-
-    return entities, relationships
+    
+    return entities_df, relationships_df

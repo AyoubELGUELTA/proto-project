@@ -606,3 +606,4 @@ def merge_entity_group(entities: List[Dict]) -> Dict:
         "normalized_name": normalized_canonical
     }
 
+#What a disgusting file, 600+ lines and only raw functions... not maintanable ; )

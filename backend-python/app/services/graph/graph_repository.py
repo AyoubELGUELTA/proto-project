@@ -1,1 +1,0 @@
-# Logique métier (ingest_entities)

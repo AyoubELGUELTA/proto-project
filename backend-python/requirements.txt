@@ -39,6 +39,8 @@ openai
 python-dotenv
 python-magic
 requests
+phonetics
+Levenshtein
 
 # Tests
 pytest

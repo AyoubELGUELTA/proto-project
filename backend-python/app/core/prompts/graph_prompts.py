@@ -13,7 +13,7 @@ The following metadata provides the global context of the document this text bel
 1. Identify all entities. For each identified entity, extract:
 - entity_name: Name of the entity, capitalized
 - entity_type: One of the following types: [{entity_types}]
-- entity_description: Comprehensive description of the entity's attributes and activities, relevant to the document context.
+- entity_description: Comprehensive description including, if available (for Human), titles (Kunya), lineage (Nasab), and key historical events they are associated with in this text.
 Format each entity as ("entity"<|><entity_name><|><entity_type><|><entity_description>)
 
 2. Identify all pairs of (source_entity, target_entity) that are *clearly related*.
@@ -76,5 +76,29 @@ Limit the final description length to {max_length} words.
 Entities: {entity_name}
 Description List: {description_list}
 #######
+Output:
+"""
+
+
+ENTITY_RESOLUTION_PROMPT = """
+You are an expert historian specializing in the Sira (biography of Prophet Muhammad ﷺ).
+Your task is to identify if the following entities of type "{entity_type}" are duplicates.
+
+### Instructions:
+1. Analyze the names and especially the CONTEXT (Nasab/lineage, titles/Kunya, specific events).
+2. **Lineage is key**: "Zayd ibn Harithah" and "Zayd ibn Thabit" are DIFFERENT people. Do not merge based on the first name only.
+3. **The Most Complete Name Wins**: When merging, the "Target Canonical Name" must always be the most complete, formal, and descriptive name available in the batch.
+4. **Be conservative**: If you are not 100% sure, or if the lineage (ibn...) differs, do NOT merge.
+5. Format your output as a list of tuples, one per line:
+(MERGE <|> "Original Name" <|> "Target Canonical Name")
+
+### Candidates to Evaluate:
+{candidates}
+
+### Output Rules:
+- Output ONLY the tuples.
+- If no duplicates are found, output: <|NO_MERGE|>
+- Use exactly the names provided in the list above.
+
 Output:
 """

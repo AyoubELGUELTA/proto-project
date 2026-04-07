@@ -56,6 +56,7 @@ class LLMClient:
         
         return response_text
 
+
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(3),
@@ -76,12 +77,27 @@ class LLMClient:
         """
         response = await self.llm.ainvoke(messages)
         
-        # Extraction et enregistrement de la consommation
-        meta = response.response_metadata.get("token_usage", {})
+        usage = getattr(response, "usage_metadata", {})
+        legacy_usage = response.response_metadata.get("token_usage", {})
+
+        # On prend la valeur là où elle existe (priorité au standard LangChain)
+        prompt_tokens = (
+            usage.get("input_tokens") 
+            or legacy_usage.get("prompt_tokens") 
+            or 0
+        )
+        completion_tokens = (
+            usage.get("output_tokens") 
+            or legacy_usage.get("completion_tokens") 
+            or 0
+        )
+
+        # Enregistrement dans le tracker
         self.tracker.add_usage(
-            prompt_tokens=meta.get("prompt_tokens", 0),
-            completion_tokens=meta.get("completion_tokens", 0),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             model_name=self.model_name
         )
         
         return response.content
+            

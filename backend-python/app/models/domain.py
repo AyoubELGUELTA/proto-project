@@ -7,6 +7,7 @@ class SiraEntityType(str, Enum):
     Syra entities for GraphRAG extraction. 
     Strictly English for internal LLM processing.
     """
+    GOD = "God", "Allah, The One and Only One ('azzawajel)."
     PROPHET = "Prophet", "The Prophet Muhammad ﷺ specifically."
     MOTHER_BELIEVER = "MotherBeliever", "The wives of the Prophet ﷺ (Mothers of the Believers)."
     AHL_BAYT = "AhlBayt", "The immediate family of the Prophet ﷺ."
@@ -24,6 +25,7 @@ class SiraEntityType(str, Enum):
     CHILD = "Child", "Children mentioned in the text."
     GROUP = "Group", "Generic groups of people."
     LOCATION = "Location", "Generic or uncertain locations."
+    CONCEPT_RELIGIOUS = "Religious Concept", "Concepts linked or contained in the Syra."
 
     def __new__(cls, value, description):
         obj = str.__new__(cls, value)

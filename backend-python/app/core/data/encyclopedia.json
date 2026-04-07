@@ -1,0 +1,156 @@
+[
+  {
+    "ID": "ALLAH",
+    "TYPE": "GOD",
+    "CANONICAL_NAME": "Allah",
+    "ALIASES": ["God", "The Almighty", "Ar-Rahman", "The Creator", "Lord of the Worlds"],
+    "NASAB": "N/A",
+    "PHASE": "BOTH",
+    "CORE_SUMMARY": "The One and Only God in Islam, the central focus of the message of Tawhid."
+  },
+  {
+    "ID": "MUHAMMAD_BIN_ABDULLAH",
+    "TYPE": "PROPHET",
+    "CANONICAL_NAME": "Muhammad ﷺ",
+    "ALIASES": ["The Prophet", "The Messenger", "Rasulullah", "Ahmad", "Al-Amin", "The Seal of the Prophets"],
+    "NASAB": "Ibn Abdillah ibn Abd al-Muttalib",
+    "PHASE": "BOTH",
+    "CORE_SUMMARY": "The final Prophet of Islam, recipient of the Quran, and leader of the Ummah."
+  },
+  {
+    "ID": "ABU_BAKR_AS_SIDDIQ",
+    "TYPE": "SAHABI",
+    "CANONICAL_NAME": "Abu Bakr as-Siddiq",
+    "ALIASES": ["Abou Bakr", "Abdallah ibn Abi Quhafa", "As-Siddiq", "The Companion of the Cave"],
+    "NASAB": "Ibn Abi Quhafa",
+    "PHASE": "BOTH",
+    "CORE_SUMMARY": "The closest companion, first adult male convert, and first Rashidun Caliph."
+  },
+  {
+    "ID": "UMAR_IBN_AL_KHATTAB",
+    "TYPE": "SAHABI",
+    "CANONICAL_NAME": "Umar ibn al-Khattab",
+    "ALIASES": ["Omar", "Al-Faruq", "Abu Hafs"],
+    "NASAB": "Ibn al-Khattab",
+    "PHASE": "BOTH",
+    "CORE_SUMMARY": "The second Rashidun Caliph, known for his justice and strength, converted in Makkah."
+  },
+  {
+    "ID": "UTHMAN_IBN_AFFAN",
+    "TYPE": "SAHABI",
+    "CANONICAL_NAME": "Uthman ibn Affan",
+    "ALIASES": ["Othman", "Dhul-Nurayn", "The Possessor of Two Lights"],
+    "NASAB": "Ibn Affan",
+    "PHASE": "BOTH",
+    "CORE_SUMMARY": "The third Rashidun Caliph, known for his modesty and for compiling the standardized Quran."
+  },
+  {
+    "ID": "ALI_IBN_ABI_TALIB",
+    "TYPE": "SAHABI",
+    "CANONICAL_NAME": "Ali ibn Abi Talib",
+    "ALIASES": ["Ali", "Abu Turab", "Asadullah", "The Lion of Allah"],
+    "NASAB": "Ibn Abi Talib ibn Abd al-Muttalib",
+    "PHASE": "BOTH",
+    "CORE_SUMMARY": "The cousin and son-in-law of the Prophet, first child convert, and fourth Rashidun Caliph."
+  },
+  {
+    "ID": "KHADIJA_BINT_KHUWAYLID",
+    "TYPE": "MOTHER_BELIEVER",
+    "CANONICAL_NAME": "Khadija bint Khuwaylid",
+    "ALIASES": ["Khadidja", "At-Tahira", "The Mother of the Believers"],
+    "NASAB": "Bint Khuwaylid",
+    "PHASE": "MAKKAH",
+    "CORE_SUMMARY": "The first wife of the Prophet, the first convert to Islam, and his greatest support."
+  },
+  {
+    "ID": "AISHA_BINT_ABU_BAKR",
+    "TYPE": "MOTHER_BELIEVER",
+    "CANONICAL_NAME": "Aisha bint Abu Bakr",
+    "ALIASES": ["Ayesha", "As-Siddiqua", "Humayra"],
+    "NASAB": "Bint Abi Bakr",
+    "PHASE": "MADINAH",
+    "CORE_SUMMARY": "The wife of the Prophet, daughter of Abu Bakr, and a major narrator of Hadith."
+  },
+
+  {
+    "ID": "SAWDA_BINT_ZAMA",
+    "TYPE": "MOTHER_BELIEVER",
+    "CANONICAL_NAME": "Sawda bint Zama",
+    "ALIASES": ["Sawdah", "Soudah"],
+    "NASAB": "Bint Zama ibn Qays",
+    "PHASE": "MAKKAH",
+    "CORE_SUMMARY": "The second wife of the Prophet ﷺ, married after the death of Khadija; known for her kindness and for giving her day to Aisha."
+  },
+  {
+    "ID": "HAFSA_BINT_UMAR",
+    "TYPE": "MOTHER_BELIEVER",
+    "CANONICAL_NAME": "Hafsa bint Umar",
+    "ALIASES": ["Hafsah", "Daughter of Umar"],
+    "NASAB": "Bint Umar ibn al-Khattab",
+    "PHASE": "MADINAH",
+    "CORE_SUMMARY": "The daughter of Umar ibn al-Khattab and guardian of the first compiled manuscript of the Quran (Mus'haf)."
+  },
+  {
+    "ID": "ZAYNAB_BINT_KHUZAYMA",
+    "TYPE": "MOTHER_BELIEVER",
+    "CANONICAL_NAME": "Zaynab bint Khuzayma",
+    "ALIASES": ["Zainab", "Umm al-Masakin", "Mother of the Poor"],
+    "NASAB": "Bint Khuzayma ibn al-Harith",
+    "PHASE": "MADINAH",
+    "CORE_SUMMARY": "Known as 'Mother of the Poor' for her immense charity; she passed away only a few months after marrying the Prophet ﷺ."
+  },
+  {
+    "ID": "UMM_SALAMA_HIND_BINT_ABI_UMAYYA",
+    "TYPE": "MOTHER_BELIEVER",
+    "CANONICAL_NAME": "Umm Salama",
+    "ALIASES": ["Hind bint Abi Umayya", "Hind al-Makhzumiyah"],
+    "NASAB": "Bint Abi Umayya ibn al-Mughira",
+    "PHASE": "MADINAH",
+    "CORE_SUMMARY": "A highly influential and wise wife, known for her counsel during the Treaty of Hudaybiyyah."
+  },
+  {
+    "ID": "ZAYNAB_BINT_JAHSH",
+    "TYPE": "MOTHER_BELIEVER",
+    "CANONICAL_NAME": "Zaynab bint Jahsh",
+    "ALIASES": ["Zainab", "Umm al-Hakam"],
+    "NASAB": "Bint Jahsh ibn Riyab",
+    "PHASE": "MADINAH",
+    "CORE_SUMMARY": "The Prophet's ﷺ cousin, known for her piety and her manual labor to earn money for charity."
+  },
+  {
+    "ID": "JUWAYRIYYA_BINT_AL_HARITH",
+    "TYPE": "MOTHER_BELIEVER",
+    "CANONICAL_NAME": "Juwayriyya bint al-Harith",
+    "ALIASES": ["Barrah", "Juwayriyah"],
+    "NASAB": "Bint al-Harith ibn Abi Dirar",
+    "PHASE": "MADINAH",
+    "CORE_SUMMARY": "From the tribe of Banu Mustaliq; her marriage led to the release of hundreds of her tribesmen from captivity."
+  },
+  {
+    "ID": "UMM_HABIBA_RAMLA_BINT_ABI_SUFYAN",
+    "TYPE": "MOTHER_BELIEVER",
+    "CANONICAL_NAME": "Umm Habiba",
+    "ALIASES": ["Ramla bint Abi Sufyan"],
+    "NASAB": "Bint Abi Sufyan ibn Harb",
+    "PHASE": "MADINAH",
+    "CORE_SUMMARY": "The daughter of Abu Sufyan; she showed immense steadfastness in her faith while in Abyssinia before marrying the Prophet ﷺ."
+  },
+  {
+    "ID": "SAFIYYA_BINT_HUYAYY",
+    "TYPE": "MOTHER_BELIEVER",
+    "CANONICAL_NAME": "Safiyya bint Huyayy",
+    "ALIASES": ["Safiyah", "Safiyyah"],
+    "NASAB": "Bint Huyayy ibn Akhtab",
+    "PHASE": "MADINAH",
+    "CORE_SUMMARY": "Of Jewish descent from the Banu Nadir tribe; she was known for her loyalty and deep love for the Prophet ﷺ."
+  },
+  {
+    "ID": "MAYMUNA_BINT_AL_HARITH",
+    "TYPE": "MOTHER_BELIEVER",
+    "CANONICAL_NAME": "Maymuna bint al-Harith",
+    "ALIASES": ["Maimunah", "Barrah"],
+    "NASAB": "Bint al-Harith ibn Hazn",
+    "PHASE": "MADINAH",
+    "CORE_SUMMARY": "The last woman the Prophet ﷺ married, during the Umrat al-Qada (the Fulfilled Pilgrimage)."
+  }
+]
