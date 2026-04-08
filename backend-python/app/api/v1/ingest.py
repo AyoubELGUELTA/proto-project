@@ -14,11 +14,12 @@ from app.indexing.workflows.create_text_units import workflow_create_text_units
 
 # Graph related
 from app.indexing.operations.graph.extract_graph import GraphExtractor
+from app.indexing.operations.graph.summarize_extractor import SummarizeExtractor
 from app.indexing.operations.entity_resolution.core_resolver import CoreResolver
+from app.indexing.operations.entity_resolution.encyclopedia_manager import EncyclopediaManager
 from app.indexing.operations.entity_resolution.llm_resolver import LLMResolver
 from app.services.llm.parser import LLMParser
 from app.services.graph.graph_service import GraphService
-from app.indexing.workflows.extract_graph import extract_graph as workflow_extract_graph
 
 # Model
 from app.models.domain import TextUnit
@@ -41,14 +42,14 @@ async def ingest_single_file(file: UploadFile):
     chunk_repo = ChunkRepository(db)
     file_service = FileService()
     identity_service = IdentityService(llm_service)
-
+    
     graph_service = GraphService(
-        extractor=GraphExtractor(llm_service),
-        summarizer=llm_service.summarize_entities, # Ta méthode de résumé
-        parser=LLMParser(),
-        core_resolver=CoreResolver(path="data/encyclopedia.json"),
-        llm_resolver=LLMResolver(llm_service)
-    )
+    extractor=GraphExtractor(llm_service),
+    summarize_extractor=SummarizeExtractor(llm_service),
+    parser=LLMParser(),
+    core_resolver=CoreResolver(encyclopedia=EncyclopediaManager()), 
+    llm_resolver=LLMResolver(llm_service)
+)
 
     # PRÉPARATION
     doc_id = await doc_repo.get_or_create(file.filename)
@@ -82,14 +83,14 @@ async def ingest_single_file(file: UploadFile):
 
         # --- E. GRAPH EXTRACTION (La nouvelle étape) ---
         # On passe le contexte (Executive Summary) pour guider l'extraction
+
         domain_context = identity_data.get("executive_summary", "A general historical document Islam-related, or Academic-related.")
-        
-        # Lancement du workflow qu'on a construit ensemble
-        entities_df, relationships_df = await workflow_extract_graph(
+
+        # Utilise directement le service, c'est lui le cerveau
+        entities_df, relationships_df = await graph_service.run_pipeline(
             text_units=final_units,
-            graph_service=graph_service,
             domain_context=domain_context
-        )
+)
 
         # --- F. PERSISTENCE DU GRAPHE ---
         # Ici, on appellera le futur GraphStore pour save en DB
@@ -98,12 +99,20 @@ async def ingest_single_file(file: UploadFile):
         logger.info(f"Graph created: {len(entities_df)} entities, {len(relationships_df)} relations.")
 
     # 4. FERMETURE
+    report = llm_service.tracker.get_report() # On récupère le rapport final
+    usage = llm_service.tracker.usage
+    
     await db.disconnect()
+    
     return {
         "status": "success", 
         "doc_id": doc_id, 
         "stats": {
             "entities": len(entities_df),
-            "relations": len(relationships_df)
-        }
+            "relations": len(relationships_df),
+            "tokens": usage.total_tokens,
+            "cost_usd": usage.total_cost
+        },
+        "identity": identity_data, # Utile pour ton assertion de test
+        "consumption_report": report
     }

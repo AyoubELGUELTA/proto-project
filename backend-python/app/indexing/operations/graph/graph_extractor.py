@@ -1,48 +1,58 @@
-# Copyright (c) 2024 Microsoft Corporation.
-# Licensed under the MIT License
-
 import logging
-
-from app.core.config.graph_config import ExtractionConfig 
-from app.services.llm.client import LLMClient
-from app.core.prompts.graph_prompts import GRAPH_EXTRACTION_PROMPT, CONTINUE_PROMPT, LOOP_PROMPT
+from typing import List
+from app.core.config.graph_config import ENTITY_TYPES, MAX_GLEANINGS, RECORD_DELIMITER
+from app.services.llm.service import LLMService
+from app.core.prompts.graph_prompts import (
+    GRAPH_EXTRACTION_SYSTEM_PROMPT, 
+    GRAPH_EXTRACTION_USER_PROMPT,
+    CONTINUE_PROMPT, 
+    LOOP_PROMPT
+)
 
 logger = logging.getLogger(__name__)
 
-
 class GraphExtractor:
-    def __init__(self, llm_client: LLMClient, config: ExtractionConfig):
-        self.llm = llm_client
-        self.config = config
+    def __init__(self, llm_service: LLMService):
+        self.llm = llm_service 
 
-    async def __call__(self, text: str, context: str) -> str:
-        """Point d'entrée unique : Extrait le vrac brut d'un chunk."""
+    async def __call__(self, text: str, context: str) -> List[List[str]]:
+        """Point d'entrée : Text + Metadata -> Tuples bruts."""
         return await self._extract_with_gleaning(text, context)
 
-    async def _extract_with_gleaning(self, text: str, context: str) -> str:
-        """Boucle de Gleaning calquée sur Microsoft (Inchangée sur le fond)."""
-        prompt_input = GRAPH_EXTRACTION_PROMPT.format(
-            entity_types=",".join(self.config.entity_types),
+    async def _extract_with_gleaning(self, text: str, context: str) -> List[List[str]]:
+        # 1. Prompts (Cache-friendly)
+        sys_p = GRAPH_EXTRACTION_SYSTEM_PROMPT.format(entity_types=",".join(ENTITY_TYPES))
+        usr_p = GRAPH_EXTRACTION_USER_PROMPT.format(
+            entity_types=",".join(ENTITY_TYPES),
             document_metadata=context,
             input_text=text
         )
 
-        messages = [{"role": "user", "content": prompt_input}]
-        response = await self.llm.ask(messages)
-        full_results = response
-        messages.append({"role": "assistant", "content": response})
+        # 2. Premier passage
+        all_tuples = await self.llm.ask_tuples(system_prompt=sys_p, user_prompt=usr_p)
 
-        if self.config.max_gleanings > 0:
-            for i in range(self.config.max_gleanings):
-                messages.append({"role": "user", "content": CONTINUE_PROMPT})
-                response = await self.llm.ask(messages)
-                full_results += f"\n{self.config.record_delimiter}\n{response}"
+        # 3. Gleaning
+        if MAX_GLEANINGS > 0:
+            history = [
+                {"role": "system", "content": sys_p},
+                {"role": "user", "content": usr_p},
+                {"role": "assistant", "content": self.llm._tuples_to_string(RECORD_DELIMITER, all_tuples)}
+            ]
+
+            for i in range(MAX_GLEANINGS):
+                history.append({"role": "user", "content": CONTINUE_PROMPT})
+                raw_res = await self.llm.client.ask(history)
                 
-                if i >= self.config.max_gleanings - 1: break
+                new_tuples = self.llm.parser.to_tuples(raw_res)
+                if not new_tuples: break
+                
+                all_tuples.extend(new_tuples)
+                if i >= MAX_GLEANINGS - 1: break
 
-                messages.append({"role": "assistant", "content": response})
-                messages.append({"role": "user", "content": LOOP_PROMPT})
-                check = await self.llm.ask(messages)
-                if "Y" not in check.upper(): break
+                history.extend([
+                    {"role": "assistant", "content": raw_res},
+                    {"role": "user", "content": LOOP_PROMPT}
+                ])
+                if "Y" not in (await self.llm.client.ask(history)).upper(): break
         
-        return full_results
+        return all_tuples

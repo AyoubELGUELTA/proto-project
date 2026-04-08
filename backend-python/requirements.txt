@@ -40,7 +40,7 @@ python-dotenv
 python-magic
 requests
 phonetics
-Levenshtein
+levenshtein
 
 # Tests
 pytest

@@ -7,25 +7,29 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from app.indexing.operations.graph.utils import filter_orphan_relationships
-from indexing.operations.text.text_utils import similarity, normalize_entity_name
+from app.indexing.operations.text.text_utils import similarity, normalize_entity_name
 
 from app.indexing.operations.graph.extract_graph import GraphExtractor
+from app.indexing.operations.graph.summarize_extractor import SummarizeExtractor
+from app.indexing.operations.graph.summarize_descriptions import summarize_descriptions
+
 from app.services.llm.parser import LLMParser
+from app.services.llm.service import LLMService
 from app.indexing.operations.entity_resolution.core_resolver import CoreResolver
 from app.indexing.operations.entity_resolution.llm_resolver import LLMResolver
-from app.core.config.graph_config import EntityResolvingConfig
+from app.core.config.graph_config import ENTITY_BATCH_SIZE, MAX_CLUSTER_BATCH
 
 logger = logging.getLogger(__name__)
 
 class GraphService:
     def __init__(self, 
                  extractor: GraphExtractor, 
-                 summarizer, 
+                 summarize_extractor: SummarizeExtractor, 
                  parser: LLMParser, 
                  core_resolver: CoreResolver, 
                  llm_resolver: LLMResolver):
         self.extractor = extractor
-        self.summarizer = summarizer
+        self.summarize_extractor = summarize_extractor
         self.parser = parser
         self.core_resolver = core_resolver 
         self.llm_resolver = llm_resolver
@@ -47,39 +51,30 @@ class GraphService:
 
         # 2. RÉSOLUTION D'ENTITÉS (Pyramidale)
         entities_df, global_mapping = await self._perform_entity_resolution(entities_df)
-
-        # 3. AGGRÉGATION & SUMMARIZATION DES ENTITÉS
-        # On fusionne les descriptions brutes de toutes les entités résolues
-        entities_df = await self._summarize_entity_descriptions(entities_df)
         entities_df["frequency"] = entities_df["source_id"].apply(len)
 
-        # 4. MISE À JOUR DES RELATIONS (Mapping + Dédoublonnage)
+        # 3. MISE À JOUR DES RELATIONS
         if not relationships_df.empty:
-            # Application du mapping (ex: C -> B devient A -> B)
             if global_mapping:
                 relationships_df["source"] = relationships_df["source"].replace(global_mapping)
                 relationships_df["target"] = relationships_df["target"].replace(global_mapping)
             
-            # Nettoyage des Self-loops (A -> A) suite au mapping
             relationships_df = relationships_df[relationships_df["source"] != relationships_df["target"]]
-
-            # Second GroupBy : Fusionne les relations devenues identiques (A->B et A->B)
             relationships_df = (
                 relationships_df.groupby(["source", "target"], sort=False)
-                .agg({
-                    "description": "sum", # On combine les listes de descriptions
-                    "weight": "sum",      # On additionne les forces de relation
-                    "source_id": "sum"    # On combine les sources
-                })
+                .agg({"description": list, "weight": "sum", "source_id": "sum"}) # list au lieu de sum pour garder les formats séparés
                 .reset_index()
             )
 
-        # 5. FILTRAGE FINAL DES ORPHELINS
-        # On le fait à la fin pour être sûr de ne pas supprimer une relation 
-        # dont le "target" a été renommé par le Resolver
-        relationships_df = filter_orphan_relationships(
-            relationships=relationships_df,
-            entities=entities_df
+        # 4. FILTRAGE DES ORPHELINS
+        relationships_df = filter_orphan_relationships(relationships_df, entities_df)
+
+        # 5. AGGRÉGATION & SUMMARIZATION (Entités + Relations) via l'opérateur externe !
+        entities_df, relationships_df = await summarize_descriptions(
+            entities_df=entities_df,
+            relationships_df=relationships_df,
+            extractor=self.summarize_extractor,
+            num_threads=ENTITY_BATCH_SIZE 
         )
 
         return entities_df, relationships_df
@@ -115,12 +110,11 @@ class GraphService:
 
     async def _resolve_pyramid(self, cluster_df: pd.DataFrame, entity_type: str) -> dict:
         """Résolution récursive par batch pour ne perdre aucun lien sémantique."""
-        MAX_BATCH = EntityResolvingConfig.max_cluster_batch 
-        if len(cluster_df) <= MAX_BATCH:
+        if len(cluster_df) <= MAX_CLUSTER_BATCH:
             return await self.llm_resolver.resolve_cluster(cluster_df, entity_type)
 
         # Map : Parallel batches
-        chunks = [cluster_df.iloc[i:i + MAX_BATCH] for i in range(0, len(cluster_df), MAX_BATCH)]
+        chunks = [cluster_df.iloc[i:i + MAX_CLUSTER_BATCH] for i in range(0, len(cluster_df), MAX_CLUSTER_BATCH)]
         tasks = [self.llm_resolver.resolve_cluster(chunk, entity_type) for chunk in chunks]
         mappings = await asyncio.gather(*tasks)
         
@@ -180,28 +174,13 @@ class GraphService:
         return [df.iloc[list(c)] for c in nx.connected_components(G)]
 
     def _final_merge(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Regroupe les lignes par titre et concatène les listes sans résumer."""
+        # On s'assure que description est une liste avant de faire sum
+        if not df.empty and not isinstance(df.iloc[0]["description"], list):
+            df["description"] = df["description"].apply(lambda d: [d] if isinstance(d, str) else d) # En gros on wrapp notre description dans une liste si c'est juste un str
+
         return df.groupby(["title", "type"], sort=False).agg({
-            "description": "sum", # Concaténation de listes [desc1] + [desc2]
+            "description": "sum", 
             "source_id": "sum",
-            "frequency": "sum", # Si déjà calculé, sinon on le fera après
+            "frequency": "sum",
             "canonical_id": "first"
         }).reset_index()
-
-    async def _summarize_entity_descriptions(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Appelle le LLM pour créer un résumé unique à partir de la liste de descriptions.
-        C'est l'étape la plus coûteuse, placée après toutes les fusions.
-        """
-        async def summarize_row(row):
-            # On nettoie les doublons exacts dans les descriptions collectées
-            descs = list(set(row["description"])) 
-            if len(descs) < 3:
-                return " ".join(descs) if descs else ""
-            
-            return await self.summarizer(entity_name=row["title"], descriptions=descs)
-
-        # On crée des tâches pour résumer chaque entité unique
-        tasks = [summarize_row(row) for _, row in df.iterrows()]
-        df["description"] = await asyncio.gather(*tasks)
-        return df

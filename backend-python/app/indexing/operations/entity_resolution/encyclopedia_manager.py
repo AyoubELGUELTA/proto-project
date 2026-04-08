@@ -21,7 +21,7 @@ class EncyclopediaManager:
             logger.error(f"Failed to load encyclopedia: {e}")
             self.data = []
 
-def find_matches(self, title: str, entity_type: str) -> List[Dict]:
+    def find_match(self, title: str, entity_type: str) -> List[Dict]:
         """
         Cherche une correspondance exacte dans le dictionnaire. 
         Couche 1 : Déterministe uniquement.

@@ -1,35 +1,45 @@
-
-import os
 import io
 import boto3
-from PIL import Image
-from botocore.client import Config
 import uuid
 import json
+import logging
+from PIL import Image
+from botocore.client import Config
 from app.services.storage.base import BaseStorage
+from app.core.settings import settings
+
+logger = logging.getLogger(__name__)
 
 class MinioStorage(BaseStorage):
     def __init__(self):
+        # Centralisation sur settings
+        self.bucket = settings.s3_bucket_name
+        self.endpoint = settings.s3_endpoint
+        self.public_url = settings.s3_public_url
+
         self.s3 = boto3.client(
             's3',
-            endpoint_url=f"http://{os.getenv('S3_ENDPOINT')}",
-            aws_access_key_id=os.getenv('S3_ACCESS_KEY'),
-            aws_secret_access_key=os.getenv('S3_SECRET_KEY'),
+            endpoint_url=f"http://{self.endpoint}" if not self.endpoint.startswith('http') else self.endpoint,
+            aws_access_key_id=settings.s3_access_key,
+            aws_secret_access_key=settings.s3_secret_key,
             config=Config(signature_version='s3v4'),
-            region_name='us-east-1' # Requis par boto3 mais ignoré par MinIO
+            region_name='us-east-1'
         )
-        self.bucket = os.getenv('S3_BUCKET_NAME')
+        
+        logger.info(f"📦 Storage Initialisé - Bucket: {self.bucket} - Endpoint: {self.endpoint}")
         self._ensure_bucket()
         self.set_bucket_public()
 
     def _ensure_bucket(self):
+        if not self.bucket:
+            raise ValueError("❌ S3_BUCKET_NAME est manquant dans la configuration !")
         try:
             self.s3.head_bucket(Bucket=self.bucket)
-        except:
+        except Exception:
+            logger.info(f"✨ Création du bucket : {self.bucket}")
             self.s3.create_bucket(Bucket=self.bucket)
 
     def set_bucket_public(self):
-        """Configure le bucket pour être accessible sans signature (Lecture seule)."""
         policy = {
             "Version": "2012-10-17",
             "Statement": [
@@ -46,7 +56,6 @@ class MinioStorage(BaseStorage):
     def upload_image(self, pil_image: Image.Image) -> str:
         try:
             filename = f"{uuid.uuid4()}.jpg"
-
             pil_image.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
             
             buffer = io.BytesIO()
@@ -57,7 +66,8 @@ class MinioStorage(BaseStorage):
                 buffer, self.bucket, filename,
                 ExtraArgs={'ContentType': 'image/jpeg'}
             )
-            return f"{os.getenv('S3_PUBLIC_URL')}/{self.bucket}/{filename}"
+            # Utilisation de l'URL publique des settings
+            return f"{self.public_url}/{self.bucket}/{filename}"
         except Exception as e:
-            print(f"❌ Erreur Storage: {e}")
+            logger.error(f"❌ Erreur Upload Storage: {e}")
             return ""

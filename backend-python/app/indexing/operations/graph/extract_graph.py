@@ -1,6 +1,3 @@
-# Copyright (c) 2024 Microsoft Corporation.
-# Licensed under the MIT License
-
 import logging
 import pandas as pd
 from typing import List, Tuple, Dict, Any
@@ -10,56 +7,54 @@ from .utils import filter_orphan_relationships
 logger = logging.getLogger(__name__)
 
 async def extract_graph(
-    text_units: List[Dict[str, Any]], # Liste de tes TextUnits (id, text, metadata)
+    text_units: List[Dict[str, Any]], 
     extractor: GraphExtractor,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Orchestre l'extraction sur tous les chunks et fusionne les résultats.
+    Orchestre l'extraction : Tuples -> Dicts -> DataFrames -> Merged Graph.
     """
-    all_entity_dfs = []
-    all_relation_dfs = []
+    raw_entities = []
+    raw_relationships = []
 
     for unit in text_units:
-        # 1. Extraction brute via le LLM (avec Gleaning)
-        ent_df, rel_df = await extractor(
-            text=unit["text"],
-            metadata=unit["metadata"],
-            source_id=unit["id"]
-        )
+        # 1. Extraction (On passe metadata comme context)
+        tuples = await extractor(text=unit["text"], context=unit.get("metadata", ""))
         
-        all_entity_dfs.append(ent_df)
-        all_relation_dfs.append(rel_df)
+        # 2. Parsing des tuples et injection du source_id
+        for t in tuples:
+            tag = t[0].lower()
+            if "entity" in tag and len(t) >= 4:
+                raw_entities.append({
+                    "title": t[1].upper(), "type": t[2].upper(), 
+                    "description": t[3], "source_id": unit["id"]
+                })
+            elif "relationship" in tag and len(t) >= 5:
+                raw_relationships.append({
+                    "source": t[1].upper(), "target": t[2].upper(), 
+                    "description": t[3], "weight": float(t[4]) if str(t[4]).replace('.','').isdigit() else 1.0,
+                    "source_id": unit["id"]
+                })
 
-    if not all_entity_dfs:
+    if not raw_entities:
         return pd.DataFrame(), pd.DataFrame()
 
-    # 2. Fusion des Entités (Merging) : on regroupe par Nom et Type pour ne pas avoir de doublons
-
-    entities = pd.concat(all_entity_dfs, ignore_index=True)
+    # 3. Transformation en DataFrame + Grouping (Scalable)
+    entities_df = pd.DataFrame(raw_entities)
     entities = (
-        entities.groupby(["title", "type"], sort=False)
-        .agg({
-            "description": list,  # On garde toutes les versions pour le futur Summary
-            "source_id": list,    # Provenance
-        })
+        entities_df.groupby(["title", "type"], sort=False)
+        .agg({"description": list, "source_id": list})
         .reset_index()
     )
-    # Ajout de la fréquence (nombre de fois où l'entité a été vue)
     entities["frequency"] = entities["source_id"].apply(len)
 
-    # 3. Fusion des Relations
-    relationships = pd.concat(all_relation_dfs, ignore_index=True)
+    relationships_df = pd.DataFrame(raw_relationships)
     relationships = (
-        relationships.groupby(["source", "target"], sort=False)
-        .agg({
-            "description": list,
-            "weight": "sum",
-            "source_id": list
-        })
+        relationships_df.groupby(["source", "target"], sort=False)
+        .agg({"description": list, "weight": "sum", "source_id": list})
         .reset_index()
     )
 
-    # 4. Nettoyage Strict (Le garde-fou MC)
+    # 4. Nettoyage final
     relationships = filter_orphan_relationships(relationships, entities)
 
     return entities, relationships

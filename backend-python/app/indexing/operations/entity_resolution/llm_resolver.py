@@ -1,8 +1,10 @@
 import logging
 import pandas as pd
 from typing import Dict
-from app.core.prompts.graph_prompts import ENTITY_RESOLUTION_PROMPT
-from app.services.llm.parser import LLMParser 
+from app.core.prompts.graph_prompts import (
+    ENTITY_RESOLUTION_SYSTEM_PROMPT, 
+    ENTITY_RESOLUTION_USER_PROMPT
+)
 
 logger = logging.getLogger(__name__)
 
@@ -12,39 +14,57 @@ class LLMResolver:
 
     async def resolve_cluster(self, cluster_df: pd.DataFrame, entity_type: str) -> Dict[str, str]:
         """
-        Prend un cluster d'entités suspectes et demande au LLM d'identifier les doublons.
-        Retourne un mapping : {"NOM_A_REMPLACER": "NOM_CIBLE"}
+        Analyse un cluster de doublons potentiels via le LLM.
+        Retourne un dictionnaire de mapping : {"NOM_A_CHANGER": "NOM_CANONIQUE"}
         """
         if len(cluster_df) < 2:
             return {}
 
-        # 1. Formatage des candidats (Nom + Context court)
-        candidates = ""
+        # 1. Préparation des candidats (On limite la description pour économiser les tokens)
+        candidates_list = []
         for row in cluster_df.itertuples():
-            # On prend la première description disponible
-            desc = row.description[0][:200] if row.description else "No description"
-            candidates += f"- {row.title}: {desc}\n"
+            # 'row.description' est une liste de strings [desc1, desc2...]
+            # On les fusionne pour avoir tout le contexte accumulé avant de couper
+            full_context = " ".join(set(row.description)) if isinstance(row.description, list) else str(row.description)
+            
+            # On nettoie les sauts de ligne pour garder le prompt compact
+            clean_context = full_context.replace("\n", " ").strip()
+            
+            # On prend les 300 premiers caractères : assez pour le Nasab et les titres (assez pour toute la description normalement)
+            snippet = clean_context[:250] + "..." if len(clean_context) > 300 else clean_context
+            
+            candidates_list.append(f"- {row.title} (Type: {entity_type}): {snippet}")
 
-        prompt = ENTITY_RESOLUTION_PROMPT.format(
-            entity_type=entity_type,
-            candidates=candidates
-        )
+        candidates_text = "\n".join(candidates_list)
 
+        # 2. Utilisation du LLMService (Workflow standardisé)
         try:
-            raw_response = await self.llm_service.ask(prompt)
+            # On utilise extract_tuples qui gère System/User et le parsing <|>
+            tuples = await self.llm_service.extract_tuples(
+                system_prompt=ENTITY_RESOLUTION_SYSTEM_PROMPT,
+                user_prompt=ENTITY_RESOLUTION_USER_PROMPT.format(
+                    entity_type=entity_type,
+                    candidates=candidates_text
+                )
+            )
 
-            if "<|NO_MERGE|>" in raw_response: # CF graph prompts in core/
-                return {}
-            
-            tuples = LLMParser.to_tuples(raw_response, delimiter="<|>")
-            
             mapping = {}
+            if not tuples:
+                logger.debug(f"Aucun merge identifié pour le cluster {entity_type}")
+                return {}
+
             for t in tuples:
-                # Format attendu du prompt MC : ("MERGE" <|> "Original" <|> "Target")
-                if len(t) == 3 and t[0].upper() == "MERGE":
-                    mapping[t[1]] = t[2]
+                # Format attendu : ["MERGE", "Original", "Target"]
+                if len(t) >= 3 and t[0].upper() == "MERGE":
+                    source, target = t[1].strip(), t[2].strip()
+                    if source != target:
+                        mapping[source] = target
+            
+            if mapping:
+                logger.info(f"🤝 LLM Resolved {len(mapping)} merges for {entity_type}")
             
             return mapping
+
         except Exception as e:
-            logger.error(f"Erreur LLM lors de la résolution du cluster {entity_type}: {e}")
+            logger.error(f"❌ Erreur LLMResolver sur cluster {entity_type}: {e}")
             return {}
