@@ -93,13 +93,24 @@ async def test_full_ingest_flow_integration():
         # --- EXPORT JSON POUR VISUALISATION MANUELLE ---
         output_dir = "app/tests/data/output"
         os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, f"result_{doc_id}.json")
         
-        with open(output_path, "w", encoding="utf-8") as out_f:
-            json.dump(result, out_f, indent=4, ensure_ascii=False)
+        # 1. Le fichier historique (pour archive)
+        archive_path = os.path.join(output_dir, f"result_{doc_id}.json")
+        # 2. LE FICHIER DEBUG (Nom fixe, sera écrasé à chaque fois)
+        debug_path = os.path.join(output_dir, "latest_graph_debug.json")
         
-        print(f"📂 Résultats complets écrits dans : {output_path}")
-        print(f"💡 Vérifie ce fichier pour valider la qualité de la résolution d'entités !")
+        output_data = json.dumps(result, indent=4, ensure_ascii=False)
+        
+        # On écrit l'archive
+        with open(archive_path, "w", encoding="utf-8") as f:
+            f.write(output_data)
+            
+        # On écrit le fichier de debug (celui que tu vas surveiller)
+        with open(debug_path, "w", encoding="utf-8") as f:
+            f.write(output_data)
+        
+        print(f"\n📂 [DEBUG] Fichier mis à jour : {debug_path}")
+        print(f"📂 [ARCHIVE] Fichier écrit : {archive_path}")
 
     finally:
         await db.disconnect()

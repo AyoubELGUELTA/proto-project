@@ -1,4 +1,3 @@
-import logging
 from typing import List
 from app.core.config.graph_config import ENTITY_TYPES, MAX_GLEANINGS, RECORD_DELIMITER
 from app.services.llm.service import LLMService
@@ -9,7 +8,6 @@ from app.core.prompts.graph_prompts import (
     LOOP_PROMPT
 )
 
-logger = logging.getLogger(__name__)
 
 class GraphExtractor:
     def __init__(self, llm_service: LLMService):
@@ -21,10 +19,9 @@ class GraphExtractor:
 
     async def _extract_with_gleaning(self, text: str, context: str) -> List[List[str]]:
         # 1. Prompts (Cache-friendly)
-        sys_p = GRAPH_EXTRACTION_SYSTEM_PROMPT.format(entity_types=",".join(ENTITY_TYPES))
+        sys_p = GRAPH_EXTRACTION_SYSTEM_PROMPT.format(entity_types=",".join(ENTITY_TYPES),document_metadata=context)
         usr_p = GRAPH_EXTRACTION_USER_PROMPT.format(
             entity_types=",".join(ENTITY_TYPES),
-            document_metadata=context,
             input_text=text
         )
 

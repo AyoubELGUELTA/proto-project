@@ -7,7 +7,7 @@ from app.services.database.document_repository import DocumentRepository
 from app.services.database.chunk_repository import ChunkRepository
 from app.services.database.ingestion_context import IngestionContext
 from app.services.storage.file_service import FileService
-from app.services.llm.service import LLMService
+from app.services.llm.factory import LLMFactory
 
 from app.indexing.operations.text.identity_service import IdentityService
 from app.indexing.workflows.create_text_units import workflow_create_text_units
@@ -36,20 +36,21 @@ async def ingest_single_file(file: UploadFile):
     db = PostgresClient()
     await db.connect()
     
-    llm_service = LLMService() 
+    llm_service = LLMFactory.get_service() 
     
+    file_service = FileService()
     doc_repo = DocumentRepository(db)
     chunk_repo = ChunkRepository(db)
-    file_service = FileService()
+    
     identity_service = IdentityService(llm_service)
     
     graph_service = GraphService(
-    extractor=GraphExtractor(llm_service),
-    summarize_extractor=SummarizeExtractor(llm_service),
-    parser=LLMParser(),
-    core_resolver=CoreResolver(encyclopedia=EncyclopediaManager()), 
-    llm_resolver=LLMResolver(llm_service)
-)
+        extractor=GraphExtractor(llm_service),
+        summarize_extractor=SummarizeExtractor(llm_service),
+        parser=LLMParser(),
+        core_resolver=CoreResolver(encyclopedia=EncyclopediaManager()), 
+        llm_resolver=LLMResolver(llm_service)
+    )
 
     # PRÉPARATION
     doc_id = await doc_repo.get_or_create(file.filename)
@@ -99,20 +100,24 @@ async def ingest_single_file(file: UploadFile):
         logger.info(f"Graph created: {len(entities_df)} entities, {len(relationships_df)} relations.")
 
     # 4. FERMETURE
-    report = llm_service.tracker.get_report() # On récupère le rapport final
-    usage = llm_service.tracker.usage
+    tracker = LLMFactory.get_tracker()
+    report = tracker.get_report()
     
     await db.disconnect()
     
     return {
         "status": "success", 
         "doc_id": doc_id, 
-        "stats": {
-            "entities": len(entities_df),
-            "relations": len(relationships_df),
-            "tokens": usage.total_tokens,
-            "cost_usd": usage.total_cost
+        "identity": identity_data,
+        "consumption_report": report,
+        "graph": {
+            "entities": entities_df.to_dict(orient="records"),
+            "relationships": relationships_df.to_dict(orient="records")
         },
-        "identity": identity_data, # Utile pour ton assertion de test
-        "consumption_report": report
+        "stats": {
+            "entities_count": len(entities_df),
+            "relations_count": len(relationships_df),
+            "tokens": tracker.usage.total_tokens,
+            "cost_usd": tracker.usage.total_cost
+        }
     }

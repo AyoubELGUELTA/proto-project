@@ -3,11 +3,8 @@
 
 """Utility functions for graph extraction operations."""
 
-import logging
 
 import pandas as pd
-
-logger = logging.getLogger(__name__)
 
 
 def filter_orphan_relationships(
@@ -46,10 +43,7 @@ def filter_orphan_relationships(
     filtered = relationships[mask].reset_index(drop=True)
     dropped = before_count - len(filtered)
     if dropped > 0:
-        logger.warning(
-            "Dropped %d relationship(s) referencing non-existent entities.",
-            dropped,
-        )
+        print(f"Dropped {dropped} relationship(s) referencing non-existent entities.")
     return filtered
 
 
@@ -61,3 +55,4 @@ def _empty_relationships_df() -> pd.DataFrame:
     return pd.DataFrame(
         columns=["source", "target", "weight", "description", "source_id"]
     )
+

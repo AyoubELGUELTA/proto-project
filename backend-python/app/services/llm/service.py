@@ -1,18 +1,15 @@
 from typing import List, Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage
 
+from app.services.llm.client import LLMClient
 from app.services.llm.parser import LLMParser
-from .factory import LLMFactory
-from .parser import LLMParser
-from app.core.config.llm_config import LLMConfig
 
 
 class LLMService:
-    def __init__(self, config: LLMConfig = None):
-        self.client = LLMFactory.create_client(config)
+    def __init__(self, client: LLMClient):
+        self.client = client
         self.parser = LLMParser()
-        # On accède au tracker via le client pour les rapports
-        self.tracker = self.client.tracker
+        self.tracker = client.tracker
 
     async def ask_tuples(self, system_prompt: str, user_prompt: str) -> List[List[str]]:
         """

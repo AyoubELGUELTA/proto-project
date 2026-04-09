@@ -1,10 +1,8 @@
 import json
-import logging
 from pathlib import Path
 from typing import List, Dict, Optional
-from app.core.settings import settings 
+from app.core.settings import settings
 
-logger = logging.getLogger(__name__)
 
 class EncyclopediaManager:
     def __init__(self):
@@ -13,12 +11,16 @@ class EncyclopediaManager:
 
     def _load_data(self):
         json_path = Path("app/core/data/encyclopedia.json")
+        if not json_path.exists():
+            print(f"Encyclopedia file not found at {json_path}")
+            return
+
         try:
             with open(json_path, "r", encoding="utf-8") as f:
                 self.data = json.load(f)
-            logger.info(f"Encyclopedia loaded with {len(self.data)} entries.")
+            print(f"Encyclopedia loaded with {len(self.data)} entries.")
         except Exception as e:
-            logger.error(f"Failed to load encyclopedia: {e}")
+            print(f"Failed to load encyclopedia: {e}")
             self.data = []
 
     def find_match(self, title: str, entity_type: str) -> List[Dict]:

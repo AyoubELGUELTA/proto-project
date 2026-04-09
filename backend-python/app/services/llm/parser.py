@@ -3,7 +3,7 @@ import re
 import logging
 from typing import Any, List, Dict, Tuple
 import pandas as pd
-
+from app.indexing.operations.text.text_utils import normalize_entity_title
 logger = logging.getLogger(__name__)
 
 class LLMParser:
@@ -106,38 +106,41 @@ class LLMParser:
                 
         return results
 
-    def to_dataframes(self, raw_results: List[str], source_ids: List[str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
+
+    def to_dataframes(
+        self, 
+        parsed_results: List[List[List[str]]], # Une liste de "matrices de tuples" (un par chunk)
+        source_ids: List[str]
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Transforme une liste de réponses LLM brutes (une par chunk) en DataFrames.
+        Transforme les tuples déjà parsés en DataFrames.
+        parsed_results: [ [[t1], [t2]], [[t3], [t4]] ] -> Liste de chunks contenant des tuples
         """
         all_entities = []
         all_relationships = []
-
-        for raw_text, s_id in zip(raw_results, source_ids):
-            tuples = self.to_tuples(raw_text, self.tuple_delimiter)
-            
-            for t in tuples:
-                if not t: continue
+        
+        # On itère sur chaque chunk
+        for chunk_tuples, s_id in zip(parsed_results, source_ids):
+            for t in chunk_tuples:
+                if not t or len(t) < 1: continue
+                
                 tag = t[0].lower()
                 
-                # Mapping Entités
                 if tag == "entity" and len(t) >= 4:
                     all_entities.append({
-                        "title": t[1].upper(),
+                        "title": normalize_entity_title(t[1]),
                         "type": t[2].upper(),
                         "description": t[3],
                         "source_id": s_id
                     })
-                
-                # Mapping Relations
                 elif tag == "relationship" and len(t) >= 5:
                     try:
                         w = float(t[4])
                     except:
                         w = 1.0
                     all_relationships.append({
-                        "source": t[1].upper(),
-                        "target": t[2].upper(),
+                        "source": normalize_entity_title(t[1]),
+                        "target": normalize_entity_title(t[2]),
                         "description": t[3],
                         "weight": w,
                         "source_id": s_id

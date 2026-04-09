@@ -48,3 +48,16 @@ def normalize_entity_name(name: str) -> str:
     normalized = re.sub(r'\s+', ' ', normalized).strip()
     
     return normalized
+
+
+def normalize_entity_title(name: str) -> str:
+    if not name:
+        return ""
+    name = name.upper()
+    name = ''.join(c for c in unicodedata.normalize('NFD', name)
+                  if unicodedata.category(c) != 'Mn')
+    #  Remplacement des tirets et caractères spéciaux par des espaces
+    name = re.sub(r'[-_]', ' ', name)
+    #  Suppression des espaces doubles et strip
+    name = ' '.join(name.split())
+    return name

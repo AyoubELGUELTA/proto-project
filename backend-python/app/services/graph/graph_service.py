@@ -40,11 +40,18 @@ class GraphService:
         domain_context: str
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         
-        # 1. EXTRACTION & PARSING
+        # 1. Extraction 
         tasks = [self.extractor(u.text, domain_context) for u in text_units]
         raw_results = await asyncio.gather(*tasks)
+        
         source_ids = [u.id for u in text_units]
+        
         entities_df, relationships_df = self.parser.to_dataframes(raw_results, source_ids)
+        
+        print(f"\n✅ DEBUG LIGNE 16 EXTRACT_GRAPH: IDS = {source_ids}")
+        print(f"📊 [STAGE 1] Post-Parsing: Entities {entities_df.shape}, Relations {relationships_df.shape}")
+        if not entities_df.empty:
+            print(f"🔍 IDs uniques trouvés: {entities_df['source_id'].unique()}")
 
         if entities_df.empty:
             return entities_df, relationships_df
@@ -53,6 +60,8 @@ class GraphService:
         entities_df, global_mapping = await self._perform_entity_resolution(entities_df)
         entities_df["frequency"] = entities_df["source_id"].apply(len)
 
+        print(f"📊 [STAGE 2] Post-Resolution: {len(entities_df)} unique entities")
+
         # 3. MISE À JOUR DES RELATIONS
         if not relationships_df.empty:
             if global_mapping:
@@ -60,16 +69,26 @@ class GraphService:
                 relationships_df["target"] = relationships_df["target"].replace(global_mapping)
             
             relationships_df = relationships_df[relationships_df["source"] != relationships_df["target"]]
+            # --- LOG AVANT AGGREGATION ---
+            print(f"🔍 Pre-agg sample source_id: {relationships_df['source_id'].iloc[0]}")
+            
             relationships_df = (
                 relationships_df.groupby(["source", "target"], sort=False)
-                .agg({"description": list, "weight": "sum", "source_id": "sum"}) # list au lieu de sum pour garder les formats séparés
+                .agg({
+                    "description": list, 
+                    "weight": "sum", 
+                    "source_id": lambda x: list(set(x)) if isinstance(x.iloc[0], str) else list(set([item for sublist in x for item in sublist]))
+                })
                 .reset_index()
             )
+            print(f"📊 [STAGE 3] Post-Aggregation: {len(relationships_df)} relations")
+            print(f"🔍 Post-agg sample source_id: {relationships_df['source_id'].iloc[0]}")
 
         # 4. FILTRAGE DES ORPHELINS
         relationships_df = filter_orphan_relationships(relationships_df, entities_df)
 
         # 5. AGGRÉGATION & SUMMARIZATION (Entités + Relations) via l'opérateur externe !
+        print("🧠 Starting Summarization (Descriptions merging)...")
         entities_df, relationships_df = await summarize_descriptions(
             entities_df=entities_df,
             relationships_df=relationships_df,

@@ -1,15 +1,14 @@
-import logging
 import pandas as pd
 from typing import Dict
+from app.services.llm.service import LLMService
 from app.core.prompts.graph_prompts import (
     ENTITY_RESOLUTION_SYSTEM_PROMPT, 
     ENTITY_RESOLUTION_USER_PROMPT
 )
 
-logger = logging.getLogger(__name__)
 
 class LLMResolver:
-    def __init__(self, llm_service):
+    def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
 
     async def resolve_cluster(self, cluster_df: pd.DataFrame, entity_type: str) -> Dict[str, str]:
@@ -39,8 +38,7 @@ class LLMResolver:
 
         # 2. Utilisation du LLMService (Workflow standardisé)
         try:
-            # On utilise extract_tuples qui gère System/User et le parsing <|>
-            tuples = await self.llm_service.extract_tuples(
+            tuples = await self.llm_service.ask_tuples(
                 system_prompt=ENTITY_RESOLUTION_SYSTEM_PROMPT,
                 user_prompt=ENTITY_RESOLUTION_USER_PROMPT.format(
                     entity_type=entity_type,
@@ -50,7 +48,7 @@ class LLMResolver:
 
             mapping = {}
             if not tuples:
-                logger.debug(f"Aucun merge identifié pour le cluster {entity_type}")
+                print(f"Aucun merge identifié pour le cluster {entity_type}")
                 return {}
 
             for t in tuples:
@@ -61,10 +59,10 @@ class LLMResolver:
                         mapping[source] = target
             
             if mapping:
-                logger.info(f"🤝 LLM Resolved {len(mapping)} merges for {entity_type}")
+                print(f"🤝 LLM Resolved {len(mapping)} merges for {entity_type}")
             
             return mapping
 
         except Exception as e:
-            logger.error(f"❌ Erreur LLMResolver sur cluster {entity_type}: {e}")
+            print(f"❌ Erreur LLMResolver sur cluster {entity_type}: {e}")
             return {}

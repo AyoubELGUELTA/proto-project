@@ -27,7 +27,8 @@ class LLMClient:
             openai_api_key=api_key, 
             temperature=config.temperature,
             max_retries=config.max_retries,
-            streaming=True
+            streaming=config.streaming,
+            stream_usage=config.token_report
         )
 
     async def ask(self, messages: list) -> str:
@@ -76,11 +77,13 @@ class LLMClient:
             Exception: Si l'appel échoue après 3 tentatives.
         """
         response = await self.llm.ainvoke(messages)
-        
-        usage = getattr(response, "usage_metadata", {})
-        legacy_usage = response.response_metadata.get("token_usage", {})
+        print(f"DEBUG RESPONSE METADATA: {response.response_metadata}")
+        print(f"DEBUG USAGE METADATA: {getattr(response, 'usage_metadata', 'MISSING')}")
+        usage = getattr(response, "usage_metadata", {}) or {}
+    
+        resp_meta = getattr(response, "response_metadata", {}) or {}
+        legacy_usage = resp_meta.get("token_usage", {}) or {}
 
-        # On prend la valeur là où elle existe (priorité au standard LangChain)
         prompt_tokens = (
             usage.get("input_tokens") 
             or legacy_usage.get("prompt_tokens") 
@@ -92,12 +95,12 @@ class LLMClient:
             or 0
         )
 
-        # Enregistrement dans le tracker
-        self.tracker.add_usage(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            model_name=self.model_name
-        )
+        # 3. Enregistrement
+        if self.tracker:
+            self.tracker.add_usage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                model_name=self.model_name
+            )
         
         return response.content
-            

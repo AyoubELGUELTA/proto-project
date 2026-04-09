@@ -1,64 +1,20 @@
 # Copyright (c) 2024 Microsoft Corporation.
 # Licensed under the MIT License
-# app/core/prompts/graph_prompts.py
 
 GRAPH_EXTRACTION_SYSTEM_PROMPT = """
 -Goal-
-Identify all entities and relationships from a text document using a provided list of entity types and the global document context.
+- Identify all entities and relationships from a text document using a provided list of entity types and the global document context.
 
--Steps-
-1. Identify all entities. For each identified entity, extract:
-- entity_name: Name of the entity, capitalized
-- entity_type: One of the types provided in the user message.
-- entity_description: Comprehensive description including titles (Kunya), lineage (Nasab), and key historical events.
-Format: ("entity"<|><entity_name><|><entity_type><|><entity_description>)
+STRICT LANGUAGE RULE:
+- All extracted ENTITY NAMES and RELATIONSHIP TYPES must be in English.
 
-2. Identify all pairs of (source_entity, target_entity) that are *clearly related*.
-Format: ("relationship"<|><source_entity><|><target_entity><|><relationship_description><|><relationship_strength>)
+- If the source text is in French, translate the entity name (e.g., 'Dieu' -> 'God', 'La Mecque' -> 'Mecca', 'Prière' -> 'Prayer', etc.).
 
-3. Return output in English using **##** as the list delimiter.
-4. When finished, output <|COMPLETE|>
+- For Arabic names, use standard English phonetic transliteration. 
 
-######################
--Examples-
-######################
-
-Example 1:
-Entity_types: Prophet, Sahabi, City, Battle
-Text:
-After the Hijra to Madinah, the Prophet Muhammad ﷺ organized the defense of the community. In the second year, the Battle of Badr took place. Hamza ibn Abd al-Muttalib showed great bravery during this conflict.
-######################
-Output:
-("entity"<|>MUHAMMAD<|>Prophet<|>The Prophet of Islam who led the community in Madinah)
-##
-("entity"<|>MADINAH<|>City<|>The city where the Prophet migrated during the Hijra)
-##
-("entity"<|>BATTLE OF BADR<|>Battle<|>A major military conflict in the second year of Hijra)
-##
-("entity"<|>HAMZA IBN ABD AL-MUTTALIB<|>Sahabi<|>A brave companion and uncle of the Prophet who fought at Badr)
-##
-("relationship"<|>MUHAMMAD<|>MADINAH<|>The Prophet migrated to and led the community in Madinah<|>10)
-##
-("relationship"<|>HAMZA IBN ABD AL-MUTTALIB<|>BATTLE OF BADR<|>Hamza was a key combatant in the Battle of Badr<|>9)
-##
-("relationship"<|>MUHAMMAD<|>BATTLE OF BADR<|>The Prophet commanded the forces during the Battle of Badr<|>9)
-<|COMPLETE|>
-
-
-######################
-"""
-
-GRAPH_EXTRACTION_USER_PROMPT = """
--Real Data-
-Entity_types: {entity_types}
-Context: {document_metadata}
-Text: {input_text}
-######################
-Output:"""
-
-GRAPH_EXTRACTION_PROMPT = """
--Goal-
-Identify all entities and relationships from a text document using a provided list of entity types and the global document context.
+GROUNDING RULE:
+- Extract ONLY information explicitly stated in the provided text. Do not use your internal knowledge to add family members, dates, or events not mentioned in the text.
+- If the text says "He went to a city", do not name the city "Medina" unless the text does.
 
 -Document Context-
 The following metadata provides the global context of the document this text belongs to:
@@ -66,17 +22,22 @@ The following metadata provides the global context of the document this text bel
 
 -Steps-
 1. Identify all entities. For each identified entity, extract:
-- entity_name: Name of the entity, capitalized
+- entity_name: Name of the entity, capitalized. 
+  *STRICT RULE*: Use English names or English phonetic transliteration only.
 - entity_type: One of the following types: [{entity_types}]
-- entity_description: Comprehensive description including, if available (for Human), titles (Kunya), lineage (Nasab), and key historical events they are associated with in this text.
+- entity_description: Concise description (MAX 3-4 sentences). Focus on titles (Kunya), lineage (Nasab), and key historical events mentioned ONLY in this text. 
+  *GROUNDING*: Do not use external knowledge.
+
 Format each entity as ("entity"<|><entity_name><|><entity_type><|><entity_description>)
 
 2. Identify all pairs of (source_entity, target_entity) that are *clearly related*.
 For each pair, extract:
 - source_entity: name as identified in step 1
 - target_entity: name as identified in step 1
-- relationship_description: explanation of why they are related
+- relationship_description: Explanation of the connection (MAX 3-4 sentences). Use English only.
+  *GROUNDING*: Extract only relationships explicitly stated or directly implied by the text.
 - relationship_strength: numeric score (1-10)
+
 Format each relationship as ("relationship"<|><source_entity><|><target_entity><|><relationship_description><|><relationship_strength>)
 
 3. Return output in English using **##** as the list delimiter.
@@ -85,6 +46,7 @@ Format each relationship as ("relationship"<|><source_entity><|><target_entity><
 ######################
 -Examples-
 ######################
+
 Example 1:
 Entity_types: Prophet, Sahabi, City, Battle
 Text:
@@ -106,11 +68,43 @@ Output:
 ("relationship"<|>MUHAMMAD<|>BATTLE OF BADR<|>The Prophet commanded the forces during the Battle of Badr<|>9)
 <|COMPLETE|>
 
+Example 2:
+Entity_types: MotherBeliever, Prophet, City, Location, Sahabi, SacredText
+Text:
+Maymuna bint al-Harith était la dernière épouse du Prophète. Le mariage a eu lieu à Sarif, une localité située près de La Mecque, après que les musulmans ont quitté la ville. Son oncle, Al-'Abbas, a agi comme son tuteur pour cette union bénie par Allah. Des références à la piété des épouses se trouvent dans le Coran.
 ######################
+Output:
+("entity"<|>MAYMUNA BINT AL HARITH<|>MotherBeliever<|>The last wife of the Prophet Muhammad and a prominent figure in the early Muslim community)
+##
+("entity"<|>MUHAMMAD<|>Prophet<|>The Prophet of Islam and husband of Maymuna bint al-Harith)
+##
+("entity"<|>SARIF<|>Location<|>A place near Mecca where the marriage of Maymuna and the Prophet was consummated)
+##
+("entity"<|>MECCA<|>City<|>The holy city from which the Muslims departed before the marriage at Sarif)
+##
+("entity"<|>AL 'ABBAS<|>Sahabi<|>The uncle of the Prophet who acted as the guardian for Maymuna during her marriage)
+##
+("entity"<|>ALLAH<|>God<|>The One True God in Islam who is mentioned as the source of blessing for the union)
+##
+("entity"<|>QURAN<|>SacredText<|>The holy book of Islam containing references to the piety of the Prophet's wives)
+##
+("relationship"<|>MUHAMMAD<|>MAYMUNA BINT AL HARITH<|>Muhammad married Maymuna bint al-Harith as his final wife<|>10)
+##
+("relationship"<|>AL 'ABBAS<|>MAYMUNA BINT AL HARITH<|>Al-'Abbas acted as the legal guardian for Maymuna during her marriage contract<|>9)
+##
+("relationship"<|>MAYMUNA BINT AL HARITH<|>SARIF<|>The marriage of Maymuna took place and was consummated in the location of Sarif<|>9)
+##
+("relationship"<|>MAYMUNA BINT AL HARITH<|>MECCA<|>Maymuna's marriage occurred in proximity to Mecca after the Muslims left the city<|>8)
+##
+("relationship"<|>ALLAH<|>MAYMUNA BINT AL HARITH<|>The union of Maymuna is described as being blessed by Allah<|>7)
+<|COMPLETE|>
+
+######################
+"""
+
+GRAPH_EXTRACTION_USER_PROMPT = """
 -Real Data-
-######################
 Entity_types: {entity_types}
-Context: {document_metadata}
 Text: {input_text}
 ######################
 Output:"""

@@ -1,10 +1,8 @@
-import logging
 import pandas as pd
 from typing import List, Tuple, Dict, Any
 from .graph_extractor import GraphExtractor
 from .utils import filter_orphan_relationships
 
-logger = logging.getLogger(__name__)
 
 async def extract_graph(
     text_units: List[Dict[str, Any]], 
@@ -15,6 +13,7 @@ async def extract_graph(
     """
     raw_entities = []
     raw_relationships = []
+
 
     for unit in text_units:
         # 1. Extraction (On passe metadata comme context)
@@ -40,11 +39,17 @@ async def extract_graph(
 
     # 3. Transformation en DataFrame + Grouping (Scalable)
     entities_df = pd.DataFrame(raw_entities)
+
+    print(f"DEBUG: raw_entities source_id type: {type(raw_entities[0]['source_id'])}")
+
     entities = (
         entities_df.groupby(["title", "type"], sort=False)
         .agg({"description": list, "source_id": list})
         .reset_index()
-    )
+        )
+
+    print(f"DEBUG: entities source_id content: {entities['source_id'].iloc[0]}")
+
     entities["frequency"] = entities["source_id"].apply(len)
 
     relationships_df = pd.DataFrame(raw_relationships)

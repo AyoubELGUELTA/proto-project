@@ -1,4 +1,5 @@
 # Logique de matching (Deterministic + Phonetic)
+
 import pandas as pd
 from typing import List, Dict, Tuple
 import logging
@@ -18,6 +19,9 @@ class CoreResolver:
         
         df = entities_df.copy()
 
+        if "canonical_id" not in df.columns:
+            df["canonical_id"] = None
+
         # ÉTAPE 1 : On donne une chance à TOUT LE MONDE d'être groupé phonétiquement
         # On ne cherche pas encore dans l'encyclopédie
         df["phonetic_key"] = df["title"].apply(lambda x: dmetaphone(x)[0])
@@ -30,12 +34,13 @@ class CoreResolver:
         for idx, row in resolved_df.iterrows():
             # On check le titre du cluster (le plus fréquent)
             match = self.encyclopedia.find_match(row["title"], row["type"])
-            if match:
-                resolved_df.at[idx, "canonical_id"] = match["ID"]
-                resolved_df.at[idx, "title"] = match["CANONICAL_NAME"]
+            print(f"DEBUG LINE 38: {match}")
+            if len(match) == 1:#TODO HANDLE LE CAS OU IL Y A PLUSIEURS MATCH...
+
+                resolved_df.at[idx, "canonical_id"] = match[0]["ID"]
+                resolved_df.at[idx, "title"] = match[0]["CANONICAL_NAME"]
             else:
-                # OPTIONNEL : On pourrait aussi checker si l'un des ALIASES 
-                # est présent dans les titres originaux du cluster si on voulait être ultra-fin.
+                # OPTIONNEL : TODO On pourrait aussi checker si l'un des ALIASES est présent dans les titres originaux du cluster si on voulait être ultra-fin.
                 pass
         
         return resolved_df
@@ -47,6 +52,12 @@ class CoreResolver:
         2. Elles ont la même PHONETIC_KEY.
         3. Le LEVENSHTEIN entre leurs titres est > threshold.
         """
+
+        if df.empty:
+            return df
+        
+        df['frequency'] = df.groupby('title')['title'].transform('count')
+
         # On trie par fréquence pour garder le titre le plus commun comme "chef de file"
         df = df.sort_values("frequency", ascending=False)
         df = df.reset_index(drop=True)
@@ -83,11 +94,21 @@ class CoreResolver:
     def _aggregate_cluster(self, cluster_rows: List[pd.Series]) -> Dict:
         """ Fusionne une liste de lignes (Series) en une seule entité. """
         main = cluster_rows[0]
+        c_id = main.get("canonical_id") if "canonical_id" in main else None
+
+        raw_sources = []
+        for r in cluster_rows:
+            s = r["source_id"]
+            if isinstance(s, list):
+                raw_sources.extend(s)
+            else:
+                raw_sources.append(s)
+
         return {
             "title": main["title"],
             "type": main["type"],
-            "description": [d for r in cluster_rows for d in r["description"]],
-            "source_id": [s for r in cluster_rows for s in r["source_id"]],
+            "description": " | ".join(set(filter(None, [r["description"] for r in cluster_rows]))),
+            "source_id": list(set(raw_sources)),
             "frequency": sum(r["frequency"] for r in cluster_rows),
-            "canonical_id": main["canonical_id"]
+            "canonical_id": c_id
         }

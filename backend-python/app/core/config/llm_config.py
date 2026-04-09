@@ -6,6 +6,10 @@ class LLMConfig(BaseModel):
     temperature: float = 0.0
     max_retries: int = 3
     max_tokens: int = 4000
+    streaming: bool = False 
+    token_report: bool = True
 
-EXTRACTION_LLM_CONFIG = LLMConfig(model_name="gpt-4o-mini", temperature=0.0)
-SUMMARIZATION_LLM_CONFIG = LLMConfig(model_name="gpt-4o-mini", temperature=0.1)
+EXTRACTION_LLM_CONFIG = LLMConfig(model_name="gpt-4o-mini", temperature=0.0, streaming=False)
+SUMMARIZATION_LLM_CONFIG = LLMConfig(model_name="gpt-4o-mini", temperature=0.1, streaming=False)
+
+CHAT_AGENT_CONFIG = LLMConfig(model_name="gpt-4o", temperature=0.1, streaming=True)
