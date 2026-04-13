@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 from typing import List, Dict, Optional
 from app.core.settings import settings
-
-
+from app.models.domain import SiraEntityType
+from app.indexing.operations.text.text_utils import normalize_entity_name
 class EncyclopediaManager:
     def __init__(self):
         self.data: List[Dict] = []
@@ -25,24 +25,37 @@ class EncyclopediaManager:
 
     def find_match(self, title: str, entity_type: str) -> List[Dict]:
         """
-        Cherche une correspondance exacte dans le dictionnaire. 
-        Couche 1 : Déterministe uniquement.
+        Cherche une correspondance dans l'encyclopédie.
+        Couche 1 : Déterministe (Exact Match sur Title/Alias).
+        Filtre : Compatibilité par CATÉGORIE.
         """
-        search_title = title.lower().strip()
+        search_norm = normalize_entity_name(title)
+        input_category = SiraEntityType.get_category(entity_type)
         matches = []
         
         for entry in self.data:
-            # Filtre de type strict pour protéger l'intégrité
-            if entry["TYPE"] != entity_type:
+            # 1. Filtre de catégorie 
+            entry_category = SiraEntityType.get_category(entry["TYPE"])
+            if input_category and entry_category:
+                if input_category != entry_category:
+                    continue
+            elif entry["TYPE"] != entity_type:
                 continue
                 
-            # On normalise les noms de l'entrée pour la comparaison
-            canonical = entry["CANONICAL_NAME"].lower()
-            aliases = [a.lower() for a in entry["ALIASES"]]
+            # 2. On prépare les empreintes de l'encyclopédie
+            # Idéalement, on ferait ça une fois à l'init pour la perf, mais testons ici
+            canonical_norm = normalize_entity_name(entry["CANONICAL_NAME"])
+            aliases_norm = [normalize_entity_name(a) for a in entry.get("ALIASES", [])]
             
-            # Inclusion stricte : on ne prend que si c'est EXACTEMENT le même nom
-            # Cela évite de merger "Umar" et "Amr" par erreur.
-            if search_title == canonical or search_title in aliases:
+            # 3. Matching Robuste
+            # On vérifie l'égalité parfaite des empreintes
+            if search_norm == canonical_norm or search_norm in aliases_norm:
                 matches.append(entry)
-                
+                continue
+            
+            # 4. Matching tolérant, contenance et rapprochement avec des aliases trouvés...
+            if len(search_norm) > 4: # On évite les noms trop courts pour ne pas matcher n'importe quoi
+                if search_norm in canonical_norm or any(search_norm in a for a in aliases_norm):
+                    matches.append(entry)
+
         return matches

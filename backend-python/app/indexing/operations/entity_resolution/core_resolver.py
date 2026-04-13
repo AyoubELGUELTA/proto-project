@@ -1,11 +1,11 @@
 # Logique de matching (Deterministic + Phonetic)
-
 import pandas as pd
 from typing import List, Dict, Tuple
 import logging
 from phonetics import dmetaphone
 from Levenshtein import ratio
 from app.indexing.operations.entity_resolution.encyclopedia_manager import EncyclopediaManager
+from app.models.domain import SiraEntityType
 
 logger = logging.getLogger(__name__)
 
@@ -14,101 +14,119 @@ class CoreResolver:
         self.encyclopedia = encyclopedia
         self.similarity_threshold = similarity_threshold
 
-    def resolve(self, entities_df: pd.DataFrame) -> pd.DataFrame:
-        if entities_df.empty: return entities_df
+    def resolve(self, entities_df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, str]]:
+        """
+        Exécute la résolution déterministe.
+        Retourne : (Le DataFrame fusionné, Le dictionnaire des changements effectués)
+        """
+        if entities_df.empty:
+            return entities_df, {}
+        
+        # On garde une trace des noms originaux avant toute modif
+        local_changes = {}
         
         df = entities_df.copy()
-
         if "canonical_id" not in df.columns:
             df["canonical_id"] = None
 
-        # ÉTAPE 1 : On donne une chance à TOUT LE MONDE d'être groupé phonétiquement
-        # On ne cherche pas encore dans l'encyclopédie
-        df["phonetic_key"] = df["title"].apply(lambda x: dmetaphone(x)[0])
+        # 1. PRÉPARATION PHONÉTIQUE
+        df["phonetic_key"] = df["title"].apply(lambda x: dmetaphone(str(x))[0] if x else "")
 
-        # ÉTAPE 2 : On crée nos clusters (Umar et Oumar se retrouvent ici dans le même sac)
-        resolved_df = self._merge_phonetic_groups(df)
+        # 2. MERGING ALGORITHMIQUE (Phonétique + Levenshtein)
+        # On passe le dictionnaire local_changes pour le remplir pendant la fusion
+        resolved_df = self._algoritmic_merging(df, local_changes)
 
-        # ÉTAPE 3 : ANCRAGE - On vérifie chaque cluster par rapport à l'Encyclopédie
-        resolved_df["canonical_id"] = None
+        # 3. ANCRAGE ENCYCLOPÉDIE
         for idx, row in resolved_df.iterrows():
-            # On check le titre du cluster (le plus fréquent)
-            match = self.encyclopedia.find_match(row["title"], row["type"])
-            print(f"DEBUG LINE 38: {match}")
-            if len(match) == 1:#TODO HANDLE LE CAS OU IL Y A PLUSIEURS MATCH...
+            matches = self.encyclopedia.find_match(row["title"], row["type"])
+            
+            if len(matches) == 1:
+                old_title = row["title"]
+                new_title = matches[0]["CANONICAL_NAME"]
+                new_id = matches[0]["ID"]
+                
+                # On enregistre le changement : Nom de cluster -> ID Encyclopédie
+                local_changes[old_title] = new_id
+                
+                resolved_df.at[idx, "canonical_id"] = new_id
+                resolved_df.at[idx, "title"] = new_title
+            
+            elif len(matches) > 1:
+                # On prépare les candidats pour le LLMResolver (étape suivante)
+                resolved_df.at[idx, "anchoring_candidates"] = [
+                    {
+                        "ID": m["ID"],
+                        "CANONICAL_NAME": m["CANONICAL_NAME"],
+                        "CORE_SUMMARY": m.get("CORE_SUMMARY", ""),
+                        "TYPE": m["TYPE"] 
+                    }
+                    for m in matches
+                ]
 
-                resolved_df.at[idx, "canonical_id"] = match[0]["ID"]
-                resolved_df.at[idx, "title"] = match[0]["CANONICAL_NAME"]
-            else:
-                # OPTIONNEL : TODO On pourrait aussi checker si l'un des ALIASES est présent dans les titres originaux du cluster si on voulait être ultra-fin.
-                pass
-        
-        return resolved_df
+        return resolved_df, local_changes
 
-    def _merge_phonetic_groups(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Fusionne les entités si :
-        1. Elles ont le même TYPE.
-        2. Elles ont la même PHONETIC_KEY.
-        3. Le LEVENSHTEIN entre leurs titres est > threshold.
-        """
-
-        if df.empty:
-            return df
-        
+    def _algoritmic_merging(self, df: pd.DataFrame, changes: dict) -> pd.DataFrame:
+        """Fusionne les variantes orthographiques et remplit le mapping."""
+        # On trie par fréquence pour que le nom le plus commun devienne le 'parent'
         df['frequency'] = df.groupby('title')['title'].transform('count')
-
-        # On trie par fréquence pour garder le titre le plus commun comme "chef de file"
-        df = df.sort_values("frequency", ascending=False)
-        df = df.reset_index(drop=True)
-
+        df = df.sort_values("frequency", ascending=False).reset_index(drop=True)
+        
         merged_indices = set()
         final_rows = []
 
         for i, row in df.iterrows():
-            if i in merged_indices:
-                continue
+            if i in merged_indices: continue
 
-            # On cherche des partenaires de fusion parmi les suivants
             current_cluster = [row]
             merged_indices.add(i)
 
             for j, candidate in df.iloc[i+1:].iterrows():
-                if j in merged_indices:
-                    continue
+                if j in merged_indices: continue
                 
-                # Condition de fusion : Même type + Même son + Écriture proche
-                same_type = row["type"] == candidate["type"]
-                same_sound = row["phonetic_key"] == candidate["phonetic_key"]
-                similar_writing = ratio(row["title"], candidate["title"]) >= self.similarity_threshold
-
-                if same_type and same_sound and similar_writing:
+                if self._is_mergeable(row, candidate):
+                    # On a trouvé un variant ! On enregistre le mapping
+                    changes[candidate["title"]] = row["title"]
                     current_cluster.append(candidate)
                     merged_indices.add(j)
 
-            # Agrégation du cluster
             final_rows.append(self._aggregate_cluster(current_cluster))
 
         return pd.DataFrame(final_rows)
 
-    def _aggregate_cluster(self, cluster_rows: List[pd.Series]) -> Dict:
-        """ Fusionne une liste de lignes (Series) en une seule entité. """
-        main = cluster_rows[0]
-        c_id = main.get("canonical_id") if "canonical_id" in main else None
+    def _is_mergeable(self, row: pd.Series, candidate: pd.Series) -> bool:
+        """Logique centrale de comparaison."""
+        # 1. Forme
+        same_sound = row["phonetic_key"] == candidate["phonetic_key"]
+        sim_ratio = ratio(str(row["title"]), str(candidate["title"]))
+        
+        if not (same_sound and sim_ratio >= self.similarity_threshold):
+            return False
 
-        raw_sources = []
+        # 2. Fond (Types)
+        cat_a = SiraEntityType.get_category(row["type"])
+        cat_b = SiraEntityType.get_category(candidate["type"])
+
+        return cat_a == cat_b
+
+    def _aggregate_cluster(self, cluster_rows: List[pd.Series]) -> Dict:
+        """Fusionne physiquement les lignes du cluster."""
+        main = cluster_rows[0]
+        
+        # Agrégation intelligente des source_id
+        all_sources = []
         for r in cluster_rows:
-            s = r["source_id"]
-            if isinstance(s, list):
-                raw_sources.extend(s)
-            else:
-                raw_sources.append(s)
+            sid = r["source_id"]
+            if isinstance(sid, list): all_sources.extend(sid)
+            else: all_sources.append(sid)
+
+        # Agrégation des descriptions
+        descriptions = set(filter(None, [str(r["description"]) for r in cluster_rows]))
 
         return {
             "title": main["title"],
             "type": main["type"],
-            "description": " | ".join(set(filter(None, [r["description"] for r in cluster_rows]))),
-            "source_id": list(set(raw_sources)),
-            "frequency": sum(r["frequency"] for r in cluster_rows),
-            "canonical_id": c_id
+            "description": " | ".join(descriptions),
+            "source_id": list(set(all_sources)),
+            "frequency": sum(r.get("frequency", 1) for r in cluster_rows),
+            "canonical_id": main.get("canonical_id")
         }

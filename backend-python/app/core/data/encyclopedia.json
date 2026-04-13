@@ -12,7 +12,7 @@
     "ID": "MUHAMMAD_BIN_ABDULLAH",
     "TYPE": "PROPHET",
     "CANONICAL_NAME": "Muhammad ﷺ",
-    "ALIASES": ["The Prophet", "The Messenger", "Rasulullah", "Ahmad", "Al-Amin", "The Seal of the Prophets"],
+    "ALIASES": ["Muhammad", "Messenger of Allah", "Nabi", "Rasulullah", "The Prophet", "The Messenger", "Rasulullah", "Ahmad", "Al-Amin", "The Seal of the Prophets"],
     "NASAB": "Ibn Abdillah ibn Abd al-Muttalib",
     "PHASE": "BOTH",
     "CORE_SUMMARY": "The final Prophet of Islam, recipient of the Quran, and leader of the Ummah."
@@ -148,7 +148,7 @@
     "ID": "MAYMUNA_BINT_AL_HARITH",
     "TYPE": "MOTHER_BELIEVER",
     "CANONICAL_NAME": "Maymuna bint al-Harith",
-    "ALIASES": ["Maimunah", "Barrah"],
+    "ALIASES": ["Maimunah", "Barrah", "Maymuna"],
     "NASAB": "Bint al-Harith ibn Hazn",
     "PHASE": "MADINAH",
     "CORE_SUMMARY": "The last woman the Prophet ﷺ married, during the Umrat al-Qada (the Fulfilled Pilgrimage)."

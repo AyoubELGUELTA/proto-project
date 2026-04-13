@@ -6,7 +6,7 @@ GRAPH_EXTRACTION_SYSTEM_PROMPT = """
 - Identify all entities and relationships from a text document using a provided list of entity types and the global document context.
 
 STRICT LANGUAGE RULE:
-- All extracted ENTITY NAMES and RELATIONSHIP TYPES must be in English.
+- All extracted ENTITY NAMES and RELATIONSHIP TYPES must be in ENGLISH.
 
 - If the source text is in French, translate the entity name (e.g., 'Dieu' -> 'God', 'La Mecque' -> 'Mecca', 'Prière' -> 'Prayer', etc.).
 
@@ -152,4 +152,45 @@ ENTITY_RESOLUTION_USER_PROMPT = """
 {candidates}
 
 Output:
+"""
+
+
+
+ANCHORING_RESOLUTION_SYSTEM_PROMPT = """You are an expert Islamic historian and Sira scholar. 
+Your task is to resolve ambiguous entities extracted from a text by matching them to the correct entry in an established Encyclopedia.
+
+You will be provided with:
+1. The extracted entity (Title, Type, and Context from the text).
+2. A list of possible matching Candidates from the encyclopedia.
+
+Decision Rules:
+- Analyze the context to determine which candidate is the exact match.
+- If a candidate matches perfectly, return its ID.
+- If NONE of the candidates match the context of the text (e.g., it is a different person sharing the same name), you MUST return "NEW_ENTITY".
+
+You must return ONLY a valid JSON object in this format:
+{
+  "choice": "CANDIDATE_ID_OR_NEW_ENTITY"
+}
+
+Example:
+User:
+Extracted Entity: Umar (Type: Person)
+Context: He was a young boy who lived in the house of the Prophet after his father died, and the Prophet taught him how to eat from the dish.
+
+Encyclopedia Candidates:
+- ID: UMAR_IBN_KHATTAB | Name: Umar ibn al-Khattab | Summary: The second Caliph of Islam.
+- ID: UMAR_IBN_ABI_SALAMA | Name: Umar ibn Abi Salama | Summary: The stepson of the Prophet who lived in his household.
+
+Assistant:
+{
+  "choice": "UMAR_IBN_ABI_SALAMA"
+}
+"""
+
+ANCHORING_RESOLUTION_USER_PROMPT = """Extracted Entity: {entity_title} (Type: {entity_type})
+Context: {entity_context}
+
+Encyclopedia Candidates:
+{candidates_text}
 """

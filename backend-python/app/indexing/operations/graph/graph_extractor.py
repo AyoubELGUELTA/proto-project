@@ -9,7 +9,7 @@ from app.core.prompts.graph_prompts import (
 )
 
 
-class GraphExtractor:
+class EntityAndRelationExtractor:
     def __init__(self, llm_service: LLMService):
         self.llm = llm_service 
 

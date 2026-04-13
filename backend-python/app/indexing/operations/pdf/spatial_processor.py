@@ -13,11 +13,7 @@ class SpatialProcessor:
         enriched_units = []
         used_image_ids = set()
         current_active_headings = [] 
-        print(f"TAILLE DE dl_chunks: {len(dl_chunks)}")
-        print("\n\n")
 
-        print(dl_chunks)
-        print("\n\n")
     
 
         for i, dl_chunk in enumerate(dl_chunks):
@@ -52,10 +48,7 @@ class SpatialProcessor:
                 }
             )
             enriched_units.append(unit)
-        for j in range (len(enriched_units)):
-            print(f" DEBUG LIGNE 50 SPATIAL_PROCESSOR.PY ----- {enriched_units[j].id}")
-            print("\n\n")
-            print(f"TAILLE DE ENRICHED_UNITS: {len(enriched_units)}")
+        
         return enriched_units
 
     @staticmethod

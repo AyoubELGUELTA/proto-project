@@ -1,8 +1,8 @@
 import pytest
 import pandas as pd
 from unittest.mock import AsyncMock, MagicMock
-from app.indexing.operations.graph.graph_extractor import GraphExtractor
-from app.indexing.operations.graph.extract_graph import extract_graph
+from app.indexing.operations.graph.graph_extractor import EntityAndRelationExtractor
+from app.indexing.operations.graph.extract_graph import extract_graph # THIS FUNCTION WAS DELETED, HAVE TO RE ARRANGE THIS FILE TO MAKE IT USE ONLY THE EXTrACTOR CLASS
 from app.models.config import ExtractGraphConfig
 from app.models.domain import SiraEntityType
 from app.tests.mocks.llm_outputs import MOCK_SIRA_EXTRACTION_CHUNK_1, MOCK_SIRA_EXTRACTION_CHUNK_2
@@ -19,7 +19,7 @@ async def test_sira_graph_extraction_logic():
     # On simule les réponses successives pour les deux chunks
     mock_llm.ask.side_effect = [MOCK_SIRA_EXTRACTION_CHUNK_1, MOCK_SIRA_EXTRACTION_CHUNK_2]
 
-    extractor = GraphExtractor(llm_service=mock_llm, config=config)
+    extractor = EntityAndRelationExtractor(llm_service=mock_llm, config=config)
 
     # 2. Mock TextUnits (Fiche d'identité incluse)
     mock_metadata = {

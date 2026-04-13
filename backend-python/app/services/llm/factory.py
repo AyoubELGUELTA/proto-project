@@ -3,7 +3,7 @@ from app.services.llm.client import LLMClient
 from app.services.llm.service import LLMService # On importe le Service
 from app.services.llm.tracker import LLMTracker
 from app.services.llm.cache import LLMCache
-from app.core.config.llm_config import LLMConfig, EXTRACTION_LLM_CONFIG, SUMMARIZATION_LLM_CONFIG
+from app.core.config.llm_config import LLMConfig, LLM_CONFIG_LIGHT, SUMMARIZATION_LLM_CONFIG, LLM_CONFIG_HEAVY
 from app.core.settings import settings
 
 class LLMFactory:
@@ -12,7 +12,7 @@ class LLMFactory:
     
     @classmethod
     def get_service(cls, config: LLMConfig = None) -> LLMService:
-        config = config or EXTRACTION_LLM_CONFIG 
+        config = config or LLM_CONFIG_LIGHT #Default value
         
         # Logique de création du client...
         client = LLMClient(config=config, api_key=settings.openai_api_key, tracker=cls._tracker, cache=cls._cache)
@@ -21,8 +21,12 @@ class LLMFactory:
 
     # Raccourcis sémantiques (très utiles pour la lisibilité)
     @classmethod
-    def get_extractor(cls):
-        return cls.get_service(EXTRACTION_LLM_CONFIG)
+    def get_light_extractor(cls):
+        return cls.get_service(LLM_CONFIG_LIGHT)
+    
+    @classmethod
+    def get_heavy_extractor(cls):
+        return cls.get_service(LLM_CONFIG_HEAVY)
 
     @classmethod
     def get_summarizer(cls):
