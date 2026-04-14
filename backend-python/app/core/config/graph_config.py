@@ -9,7 +9,7 @@ class ExtractionConfig(BaseModel):
 
 
 class SummarizationConfig(BaseModel):
-    max_summary_length: int = 500  # mots
+    max_summary_length: int = 350  # words
     max_input_tokens: int = 2000
     entity_batch_size: int = 10
 

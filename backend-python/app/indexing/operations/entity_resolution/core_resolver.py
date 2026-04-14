@@ -1,4 +1,3 @@
-# Logique de matching (Deterministic + Phonetic)
 import pandas as pd
 from typing import List, Dict, Tuple
 import logging
@@ -10,49 +9,70 @@ from app.models.domain import SiraEntityType
 logger = logging.getLogger(__name__)
 
 class CoreResolver:
+    """
+    Handles deterministic entity resolution through phonetic and string similarity algorithms.
+    
+    The CoreResolver reduces entity duplication before LLM intervention by:
+    1. Grouping lexical variants (phonetic + Levenshtein distance).
+    2. Anchoring clusters to the Encyclopedia (Canonical Source).
+    3. Aggregating metadata (sources, descriptions, frequencies) for merged entities.
+    """
     def __init__(self, encyclopedia: EncyclopediaManager, similarity_threshold: float = 0.85):
+        """
+        Initializes the resolver with a reference encyclopedia.
+        
+        Args:
+            encyclopedia: Master reference for canonical entity validation.
+            similarity_threshold: Levenshtein ratio (0.0 to 1.0) required to trigger a merge.
+        """
         self.encyclopedia = encyclopedia
         self.similarity_threshold = similarity_threshold
 
     def resolve(self, entities_df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, str]]:
         """
-        Exécute la résolution déterministe.
-        Retourne : (Le DataFrame fusionné, Le dictionnaire des changements effectués)
+        Executes the three-stage deterministic resolution pipeline.
+        
+        Steps:
+        1. Phonetic Key Generation: Using Double Metaphone for sound-based indexing.
+        2. Algorithmic Merging: Clustering variants within the current DataFrame.
+        3. Encyclopedia Anchoring: Attempting to map clusters to known canonical IDs.
+        
+        Returns:
+            - resolved_df: Cleaned DataFrame with merged rows and canonical_ids.
+            - local_changes: A mapping dictionary {old_name: new_canonical_name_or_id}.
         """
         if entities_df.empty:
             return entities_df, {}
         
-        # On garde une trace des noms originaux avant toute modif
         local_changes = {}
-        
         df = entities_df.copy()
+        
         if "canonical_id" not in df.columns:
             df["canonical_id"] = None
 
-        # 1. PRÉPARATION PHONÉTIQUE
-        df["phonetic_key"] = df["title"].apply(lambda x: dmetaphone(str(x))[0] if x else "")
+        # 1. Phonetic Fingerprinting
+        # Allows matching 'Muhammad' and 'Muhamad' even with spelling variations
+        df["phonetic_key"] = df["title"].apply(lambda x: dmetaphone(str(x))[0] if x else "")#TODO put aswell the second proposition of dmetaphone later
 
-        # 2. MERGING ALGORITHMIQUE (Phonétique + Levenshtein)
-        # On passe le dictionnaire local_changes pour le remplir pendant la fusion
+        # 2. Iterative Algorithmic Merging
         resolved_df = self._algoritmic_merging(df, local_changes)
 
-        # 3. ANCRAGE ENCYCLOPÉDIE
+        # 3. Reference Data Anchoring (Encyclopedia)
         for idx, row in resolved_df.iterrows():
             matches = self.encyclopedia.find_match(row["title"], row["type"])
             
+            # Case A: Unique Match found - Direct Anchoring
             if len(matches) == 1:
                 old_title = row["title"]
                 new_title = matches[0]["CANONICAL_NAME"]
                 new_id = matches[0]["ID"]
                 
-                # On enregistre le changement : Nom de cluster -> ID Encyclopédie
                 local_changes[old_title] = new_id
-                
                 resolved_df.at[idx, "canonical_id"] = new_id
                 resolved_df.at[idx, "title"] = new_title
             
+            # Case B: Ambiguous Matches - Flagging for LLM intervention
             elif len(matches) > 1:
-                # On prépare les candidats pour le LLMResolver (étape suivante)
                 resolved_df.at[idx, "anchoring_candidates"] = [
                     {
                         "ID": m["ID"],
@@ -66,8 +86,14 @@ class CoreResolver:
         return resolved_df, local_changes
 
     def _algoritmic_merging(self, df: pd.DataFrame, changes: dict) -> pd.DataFrame:
-        """Fusionne les variantes orthographiques et remplit le mapping."""
-        # On trie par fréquence pour que le nom le plus commun devienne le 'parent'
+        """
+        Clusters entities based on frequency-first priority.
+        
+        The algorithm treats the most frequent name as the cluster 'pivot' 
+        to ensure naming stability throughout the graph.
+        """
+
+        # Frequency-based sorting to ensure the dominant name survives as the cluster head        
         df['frequency'] = df.groupby('title')['title'].transform('count')
         df = df.sort_values("frequency", ascending=False).reset_index(drop=True)
         
@@ -84,7 +110,7 @@ class CoreResolver:
                 if j in merged_indices: continue
                 
                 if self._is_mergeable(row, candidate):
-                    # On a trouvé un variant ! On enregistre le mapping
+                    # Record the redirection for relationship remapping
                     changes[candidate["title"]] = row["title"]
                     current_cluster.append(candidate)
                     merged_indices.add(j)
@@ -94,9 +120,16 @@ class CoreResolver:
         return pd.DataFrame(final_rows)
 
     def _is_mergeable(self, row: pd.Series, candidate: pd.Series) -> bool:
-        """Logique centrale de comparaison."""
+        """
+        Hybrid comparison logic combining sound and edit distance.
+        
+        Validation layers:
+        1. Structural: Both phonetic keys must match AND Levenshtein ratio > threshold.
+        2. Semantic: Both entities must belong to the same Category (SiraEntityType).
+        """
+
         # 1. Forme
-        same_sound = row["phonetic_key"] == candidate["phonetic_key"]
+        same_sound = row["phonetic_key"] == candidate["phonetic_key"]#TODO handles the second dmetaphone phonetic proposition
         sim_ratio = ratio(str(row["title"]), str(candidate["title"]))
         
         if not (same_sound and sim_ratio >= self.similarity_threshold):
@@ -109,17 +142,23 @@ class CoreResolver:
         return cat_a == cat_b
 
     def _aggregate_cluster(self, cluster_rows: List[pd.Series]) -> Dict:
-        """Fusionne physiquement les lignes du cluster."""
+        """
+        Collapses a group of similar entities into a single unified record.
+        
+        Merges source tracking IDs and joins descriptions with a pipe delimiter ("|") 
+        to preserve context for the subsequent Summarization phase.
+        """
+       
         main = cluster_rows[0]
         
-        # Agrégation intelligente des source_id
+        # Aggregate unique source IDs across the cluster
         all_sources = []
         for r in cluster_rows:
             sid = r["source_id"]
             if isinstance(sid, list): all_sources.extend(sid)
             else: all_sources.append(sid)
 
-        # Agrégation des descriptions
+        # Collect unique descriptions for later LLM summarization
         descriptions = set(filter(None, [str(r["description"]) for r in cluster_rows]))
 
         return {

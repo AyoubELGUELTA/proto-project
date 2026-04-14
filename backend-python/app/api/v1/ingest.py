@@ -23,7 +23,6 @@ from app.indexing.operations.entity_resolution.resolution_engine import EntityRe
 
 from app.models.domain import TextUnit
 
-logger = logging.getLogger(__name__)
 
 async def ingest_single_file(file: UploadFile):
     # 1. INIT BASE SERVICES
@@ -88,7 +87,7 @@ async def ingest_single_file(file: UploadFile):
             domain_context=domain_context
         )
         
-        logger.info(f"Graph success: {len(entities_df)} entities, {len(relationships_df)} relations.")
+        print(f"Graph success: {len(entities_df)} entities, {len(relationships_df)} relations.")
 
     # 5. CONSOMMATION & RÉPONSE
     tracker = LLMFactory.get_tracker()

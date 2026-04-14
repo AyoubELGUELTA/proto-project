@@ -114,17 +114,28 @@ LOOP_PROMPT = "Are there more entities or relationships to extract? Answer Y or 
 
 
 
-SUMMARIZE_SYSTEM_PROMPT = """
-You are a helpful assistant generating a comprehensive summary.
-Concatenate multiple descriptions into a single, coherent, third-person biography.
-Resolve contradictions and maintain full context (names, titles).
+ENTITY_SUMMARIZE_SYSTEM_PROMPT = """
+You are a precision-oriented assistant. Synthesize multiple entity descriptions into a single, factual, third-person summary.
+STRICT RULES:
+1. NO EXTERNAL KNOWLEDGE: Use ONLY the provided descriptions. Do not add birth dates, historical facts, or titles not present in the text.
+2. CONTRADICTIONS: If descriptions conflict, mention both possibilities neutrally.
+3. STYLE: Professional, objective, and concise.
 Limit to {max_length} words.
 """
 
-SUMMARIZE_USER_PROMPT = """
+RELATIONSHIP_SUMMARIZE_SYSTEM_PROMPT = """
+You are a precision-oriented assistant. Synthesize multiple descriptions of a relationship between two entities into one.
+STRICT RULES:
+1. NO EXTERNAL KNOWLEDGE: Only describe the connection as it appears in the provided data.
+2. FOCUS: Explain the nature, context, and duration of the link between the two subjects.
+3. STYLE: Professional and factual. Avoid flowery language.
+Limit to {max_length} words.
+"""
+
+COMMON_SUMMARIZE_USER_PROMPT = """
 #######
 -Data-
-Entity: {entity_name}
+Subject: {target_name}
 Description List: {description_list}
 #######
 Output:
