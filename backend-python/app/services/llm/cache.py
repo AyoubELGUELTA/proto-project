@@ -1,4 +1,3 @@
-
 import redis
 import json
 import hashlib
@@ -9,66 +8,85 @@ logger = logging.getLogger(__name__)
 
 class LLMCache:
     """
-    Système de persistance pour les réponses LLM basé sur Redis.
+    Persistence layer for LLM responses using Redis.
+    
+    This caching mechanism ensures that identical requests (System + User prompts) 
+    do not trigger redundant LLM calls. It optimizes both execution speed and 
+    API costs by storing previous completions for a defined TTL (Time To Live).
     """
     
     def __init__(self, redis_url: str):
-
+        """
+        Initializes the Redis client and validates the connection.
+        
+        Args:
+            redis_url: The connection string (e.g., 'redis://localhost:6379/0').
+        """
         try:
             self.client = redis.from_url(redis_url, decode_responses=True)
-            # Test de connexion rapide
+            # Connectivity check
             self.client.ping()
         except redis.RedisError as e:
-            logger.error(f"❌ Impossible de se connecter à Redis : {e}")
+            print(f"❌ Failed to connect to Redis: {e}")
             self.client = None
 
-        self.ttl = 3600 * 24 * 7  # 7 jours
+        # Default TTL: 7 days to balance freshness and cost savings
+        self.ttl = 3600 * 24 * 7  
             
     def _generate_key(self, messages: List[Any]) -> str:
         """
-        Crée une clé unique (empreinte digitale) à partir des messages envoyés au LLM.
+        Generates a unique fingerprint (SHA-256) based on the request content.
         
-        La méthode trie les clés pour garantir que le même dictionnaire 
-        produit toujours la même clé de cache (déterminisme).
+        To ensure stability, messages are serialized to JSON with sorted keys. 
+        This guarantees that the same logical request always produces the same cache key.
         
         Args:
-            messages: Liste des objets messages (System, Human, etc.)
+            messages: List of message objects or strings sent to the LLM.
+            
         Returns:
-            str: Une chaîne de type 'llm_cache:a1b2c3d4...'
+            A prefixed hexadecimal string (e.g., 'llm_cache:5f4dcc3b...').
         """
-        # On convertit les objets messages en chaînes pour pouvoir les sérialiser
+        # Stringify each message object to ensure serializability
         serialized = json.dumps([str(m) for m in messages], sort_keys=True)
-        # Hachage SHA-256 pour obtenir une clé courte et unique
+        # SHA-256 provides a robust collision-resistant identifier
         hash_gen = hashlib.sha256(serialized.encode()).hexdigest()
         return f"llm_cache:{hash_gen}"
 
     def get(self, messages: List[Any]) -> Optional[str]:
         """
-        Récupère une réponse en cache si elle existe.
+        Retrieves a cached response if available (Cache HIT).
         
         Args:
-            messages: La liste des messages qui servent de base à la recherche.
+            messages: The prompt context used as the lookup key.
+            
         Returns:
-            La réponse textuelle si trouvée (HIT), sinon None (MISS).
+            The stored completion text if found, otherwise None (Cache MISS).
         """
+        if not self.client:
+            return None
+            
         key = self._generate_key(messages)
         try:
             return self.client.get(key)
         except redis.RedisError as e:
-            logger.warning(f"⚠️ Erreur de lecture Redis : {e}")
+            print(f"⚠️ Redis Read Error: {e}")
             return None
 
     def set(self, messages: List[Any], response: str):
         """
-        Enregistre une réponse LLM dans Redis avec une expiration automatique.
+        Stores an LLM response in Redis with an automatic expiration.
         
         Args:
-            messages: Les messages d'origine (utilisés pour générer la clé).
-            response: Le texte brut renvoyé par le LLM à stocker.
+            messages: The original prompt context (base for the fingerprint).
+            response: The raw text completion to be stored.
         """
+        if not self.client:
+            return
+            
         key = self._generate_key(messages)
         try:
-            # setex = SET avec EXpiration
+            # SETEX atomicity: Sets the value and expiration in a single operation
             self.client.setex(key, self.ttl, response)
+            print(f"✅ Cached response for key: {key[:20]}...")
         except redis.RedisError as e:
-            logger.warning(f"⚠️ Impossible d'écrire dans le cache Redis : {e}")
+            print(f"⚠️ Failed to write to Redis cache: {e}")

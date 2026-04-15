@@ -1,5 +1,8 @@
 from typing import Any, Dict
+import logging
 
+
+logger = logging.getLogger(__name__)
 
 class IdentityTracker:
     """
@@ -32,7 +35,9 @@ class IdentityTracker:
         # Safety check: avoid empty strings or self-referential loops
         if not old_s or not new_s or old_s == new_s:
             return
-            
+        
+        logger.debug(f"Registering alias: '{old_s}' -> '{new_s}'")
+
         # Double-mapping safeguard for case-insensitive lookup
         self._mapping[old_s] = new_s
         self._mapping[old_s.upper()] = new_s
@@ -60,7 +65,12 @@ class IdentityTracker:
             while current in self._mapping and current not in path:
                 path.add(current)
                 current = self._mapping[current]
-            
+
+        # USEFUL DEBUG LINE ----
+        if current != self._mapping[key]:
+            logger.debug(f"Transitive hit: '{key}' resolved to '{current}' (via {len(path)} steps)")
+        #  ---- END
+
             final_map[key] = current
-            
+        logger.info(f"✅ Identity resolution complete. {len(final_map)} identities stabilized.")
         return final_map

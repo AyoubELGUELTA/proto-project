@@ -7,6 +7,9 @@
 import pandas as pd
 
 
+import logging
+logger = logging.getLogger(__name__)
+
 def filter_orphan_relationships(
     relationships: pd.DataFrame,
     entities: pd.DataFrame,
@@ -43,7 +46,7 @@ def filter_orphan_relationships(
     filtered = relationships[mask].reset_index(drop=True)
     dropped = before_count - len(filtered)
     if dropped > 0:
-        print(f"Dropped {dropped} relationship(s) referencing non-existent entities.")
+        logger.warning(f"🗑️ Dropped {dropped} orphan relationship(s) referencing non-existent entities (Hallucinations).")
     return filtered
 
 

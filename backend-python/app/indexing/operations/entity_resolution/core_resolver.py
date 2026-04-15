@@ -53,6 +53,7 @@ class CoreResolver:
         # 1. Phonetic Fingerprinting
         # Allows matching 'Muhammad' and 'Muhamad' even with spelling variations
         df["phonetic_key"] = df["title"].apply(lambda x: dmetaphone(str(x))[0] if x else "")#TODO put aswell the second proposition of dmetaphone later
+        logger.info(f"🔍 Phonetic fingerprinting completed for {len(df)} entities.")
 
         # 2. Iterative Algorithmic Merging
         resolved_df = self._algoritmic_merging(df, local_changes)
@@ -63,6 +64,7 @@ class CoreResolver:
             
             # Case A: Unique Match found - Direct Anchoring
             if len(matches) == 1:
+                logger.info(f"✅ Encyclopedia Match: '{old_title}' anchored to ID {new_id}")
                 old_title = row["title"]
                 new_title = matches[0]["CANONICAL_NAME"]
                 new_id = matches[0]["ID"]
@@ -73,6 +75,7 @@ class CoreResolver:
             
             # Case B: Ambiguous Matches - Flagging for LLM intervention
             elif len(matches) > 1:
+                logger.warning(f"⚠️ Ambiguity: '{row['title']}' has {len(matches)} candidates. Flagged for LLM.")
                 resolved_df.at[idx, "anchoring_candidates"] = [
                     {
                         "ID": m["ID"],
@@ -112,11 +115,12 @@ class CoreResolver:
                 if self._is_mergeable(row, candidate):
                     # Record the redirection for relationship remapping
                     changes[candidate["title"]] = row["title"]
+                    logger.debug(f"🔗 Merging variant '{candidate['title']}' into pivot '{row['title']}'")
                     current_cluster.append(candidate)
                     merged_indices.add(j)
 
             final_rows.append(self._aggregate_cluster(current_cluster))
-
+        logger.info(f"📉 Algorithmic merging reduced DF from {len(df)} to {len(final_rows)} entities.")
         return pd.DataFrame(final_rows)
 
     def _is_mergeable(self, row: pd.Series, candidate: pd.Series) -> bool:

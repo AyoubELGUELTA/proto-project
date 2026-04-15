@@ -12,6 +12,9 @@ from app.core.prompts.graph_prompts import (
     LOOP_PROMPT
 )
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class EntityAndRelationExtractor:
     """
@@ -62,7 +65,9 @@ class EntityAndRelationExtractor:
         )
 
         # 2. Premier passage
+        logger.info("⚡ Starting initial extraction pass...")
         all_tuples = await self.llm.ask_tuples(system_prompt=sys_p, user_prompt=usr_p)
+        logger.info(f"📥 First pass completed: {len(all_tuples)} tuples extracted.")
 
         # 3. Gleaning
         if MAX_GLEANINGS > 0:
@@ -80,12 +85,18 @@ class EntityAndRelationExtractor:
                 if not new_tuples: break
                 
                 all_tuples.extend(new_tuples)
-                if i >= MAX_GLEANINGS - 1: break
+                logger.info(f"➕ Found {len(new_tuples)} additional tuples.")
+
+                if i >= MAX_GLEANINGS - 1: 
+                    logger.warning("🕒 Reached MAX_GLEANINGS limit.")
+                    break
 
                 history.extend([
                     {"role": "assistant", "content": raw_res},
                     {"role": "user", "content": LOOP_PROMPT}
                 ])
-                if "Y" not in (await self.llm.client.ask(history)).upper(): break
+                if "Y" not in (await self.llm.client.ask(history)).upper(): 
+                    logger.info("✅ LLM signaled extraction completion.")
+                    break
         
         return all_tuples

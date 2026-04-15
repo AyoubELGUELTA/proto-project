@@ -2,9 +2,8 @@
 # Licensed under the MIT License
 
 import asyncio
-import logging
 import pandas as pd
-from typing import List, Union, Tuple
+from typing import List, Tuple
 from app.services.llm.service import LLMService
 from app.core.config.graph_config import MAX_SUMMARY_LENGTH, ENTITY_BATCH_SIZE, MAX_INPUT_TOKENS #TODO
 from app.core.prompts.graph_prompts import (
@@ -13,7 +12,7 @@ from app.core.prompts.graph_prompts import (
                 COMMON_SUMMARIZE_USER_PROMPT
             )
 
-
+import logging
 logger = logging.getLogger(__name__)
 
 class SummarizeManager: 
@@ -49,7 +48,9 @@ class SummarizeManager:
         ent_task = self._process_df(entities_df, is_entity=True)
         rel_task = self._process_df(relationships_df, is_entity=False)
         
-        return await asyncio.gather(ent_task, rel_task)
+        results = await asyncio.gather(ent_task, rel_task)
+        logger.info("✅ All summaries have been synthesized and consolidated.")
+        return results
 
     async def _process_df(self, df: pd.DataFrame, is_entity: bool) -> pd.DataFrame:
         """
@@ -88,9 +89,12 @@ class SummarizeManager:
         
         # Grounding optimization: If only one description exists, no synthesis needed
         if len(descriptions) == 1 and isinstance(descriptions[0], str): 
+            logger.debug(f"Skipping summary for '{identifier}': it has a single description.")
             return descriptions[0]
         
         async with self.semaphore:
+            logger.info(f"🤖 Summarizing '{identifier}' ({len(descriptions)} fragments)...")
+
             # deduplicate and sort to ensure deterministic input
             unique_descriptions = sorted(set(filter(None, descriptions)))
             
@@ -103,4 +107,9 @@ class SummarizeManager:
                 description_list="\n- ".join(unique_descriptions)
             )
             
-            return await self.llm.ask_text(system_prompt=system_p, user_prompt=user_p)
+            try:
+                summary = await self.llm.ask_text(system_prompt=system_p, user_prompt=user_p)
+                return summary
+            except Exception as e:
+                logger.error(f"❌ Failed to summarize '{identifier}': {e}")
+                return " ".join(unique_descriptions[:2]) # Fallback : We join the first two descriptions in a single string

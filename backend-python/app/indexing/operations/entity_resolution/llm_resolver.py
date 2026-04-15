@@ -14,6 +14,9 @@ from app.core.prompts.graph_prompts import (
 from app.core.config.graph_config import MAX_CLUSTER_BATCH
 from app.indexing.operations.text.text_utils import similarity, normalize_entity_name
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 class LLMResolver:
     """
@@ -49,6 +52,7 @@ class LLMResolver:
         if "anchoring_candidates" in df.columns:
             ambiguous_df = df[df["anchoring_candidates"].notna()]
             if not ambiguous_df.empty:
+                logger.info(f"⚓ Resolving anchoring for {len(ambiguous_df)} ambiguous entities...")
                 tasks = [self.resolve_anchoring(row) for _, row in ambiguous_df.iterrows()]
                 results = await asyncio.gather(*tasks)
                 
@@ -63,6 +67,7 @@ class LLMResolver:
         # Groups entities that didn't match the Encyclopedia but might be duplicates of each other.
         orphans = df[df["canonical_id"].isna()].copy()
         if not orphans.empty:
+            logger.info(f"🧩 Clustering {len(orphans)} orphan entities for semantic resolution...")
             for entity_type, type_group in orphans.groupby("type"):
                 # Use Graph theory and NLP to find potential duplicate groups
                 clusters = self._create_hybrid_clusters(type_group) 
@@ -116,7 +121,7 @@ class LLMResolver:
             return mapping
 
         except Exception as e:
-            print(f"LLMResolver cluster error ({entity_type}): {e}")
+            logger.error(f"❌ LLMResolver cluster error ({entity_type}): {e}")
             return {}
         
 
@@ -148,7 +153,7 @@ class LLMResolver:
                 )
             )
         except Exception as e:
-            print(f"LLMResolver anchoring error ({row.title}): {e}")
+            logger.error(f"❌ LLMResolver anchoring error ({row.title}): {e}")
             return {"choice": "NEW_ENTITY"} # Fallback as a new entity 
 
 
@@ -192,7 +197,10 @@ class LLMResolver:
                     G.add_edge(i, j)
 
         # Return list of DataFrames, each representing a connected component (cluster)
-        return [df.iloc[list(c)] for c in nx.connected_components(G)]
+        clusters = list(nx.connected_components(G))
+        
+        logger.debug(f"📊 Hybrid clustering created {len(clusters)} groups from {len(df)} nodes.")
+        return [df.iloc[list(c)] for c in clusters]
 
     
     def _format_anchoring_candidates(self, candidates: list) -> str:

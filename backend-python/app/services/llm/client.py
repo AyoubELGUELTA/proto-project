@@ -11,16 +11,30 @@ logger = logging.getLogger(__name__)
 
 class LLMClient:
     """
-    Moteur d'exécution LLM gérant la résilience (Retries), le Caching et le Tracking.
+    Core execution engine for LLM interactions.
     
-    Cette classe est le seul point de contact direct avec les APIs de modèles (OpenAI/Gemini).
+    This client acts as the gateway to Model APIs (OpenAI,Gemini,etc), integrating:
+    1. Resilience: Automatic retries with exponential backoff.
+    2. Efficiency: Redis-based response caching to prevent redundant API calls.
+    3. Monitoring: Token usage tracking and cost estimation.
     """
 
     def __init__(self, config: LLMConfig, api_key: str, tracker: LLMTracker, cache: LLMCache):
+        """
+        Initializes the client with its required infrastructure.
+        
+        Args:
+            config: Configuration object defining model parameters (model_name, temp, max_retries, etc.).
+            api_key: Secret key for API authentication.
+            tracker: Instance of LLMTracker for consumption monitoring.
+            cache: Instance of LLMCache for persistence.
+        """
         self.config = config 
         self.tracker = tracker
         self.cache = cache
         self.model_name = config.model_name 
+
+        # Integration with LangChain's ChatOpenAI abstraction
 
         self.llm = ChatOpenAI(
             model=self.model_name, 
@@ -33,26 +47,30 @@ class LLMClient:
 
     async def ask(self, messages: list) -> str:
         """
-        Point d'entrée principal pour envoyer une requête au LLM.
-        Vérifie d'abord le cache avant de déclencher un appel réseau résilient.
+        Main entry point for LLM requests.
+        
+        Orchestrates the 'Cache-First' strategy:
+        - If the request fingerprint exists in Redis, returns immediately.
+        - Otherwise, triggers a resilient network call and caches the result.
 
         Args:
-            messages (list): Liste d'objets SystemMessage ou HumanMessage.
+            messages: List of LangChain message objects (SystemMessage, HumanMessage).
 
         Returns:
-            str: Le contenu textuel de la réponse du modèle.
+            The textual content of the model's response.
         """
-        # 1. Tentative de récupération depuis le cache Redis
+
+        # 1. Cache Lookup (Saves money and time)
         cached_response = self.cache.get(messages)
         if cached_response:
-            logger.info(f"💾 Cache HIT pour le modèle {self.model_name}")
+            print(f"💾 Cache HIT for model {self.model_name}")
             return cached_response
 
-        # 2. Appel réseau avec logique de Retry intégrée
-        logger.info(f"🌐 Cache MISS. Appel API vers {self.model_name}...")
+        # 2. Resilient API Call
+        print(f"🌐 Cache MISS. Dispatching API call to {self.model_name}...")
         response_text = await self._execute_with_retry(messages)
 
-        # 3. Mise en cache de la nouvelle réponse
+        # 3. Cache Update
         self.cache.set(messages, response_text)
         
         return response_text
@@ -65,25 +83,29 @@ class LLMClient:
     )
     async def _execute_with_retry(self, messages: list) -> str:
         """
-        Exécute l'appel réseau vers le LLM avec un mécanisme de backoff exponentiel.
+        Executes the network call with a safety retry mechanism.
+        
+        The 'exponential backoff' ensures that the client waits progressively 
+        longer (2s, 4s, 8s...) between attempts to handle rate limits or transient errors.
 
         Args:
-            messages (list): Liste de messages formatés pour LangChain.
+            messages: List of messages formatted for LangChain.
 
         Returns:
-            str: Contenu brut de la réponse.
+            Raw completion content.
             
         Raises:
-            Exception: Si l'appel échoue après 3 tentatives.
+            Exception: If the call fails after the maximum number of attempts.
         """
+        # Await the asynchronous LangChain call
         response = await self.llm.ainvoke(messages)
-        print(f"DEBUG RESPONSE METADATA: {response.response_metadata}")
-        print(f"DEBUG USAGE METADATA: {getattr(response, 'usage_metadata', 'MISSING')}")
+        
+        # Metadata Extraction (Handling variations between LangChain versions)
         usage = getattr(response, "usage_metadata", {}) or {}
-    
         resp_meta = getattr(response, "response_metadata", {}) or {}
         legacy_usage = resp_meta.get("token_usage", {}) or {}
 
+        # Resolve token counts from multiple possible metadata locations
         prompt_tokens = (
             usage.get("input_tokens") 
             or legacy_usage.get("prompt_tokens") 
@@ -95,7 +117,7 @@ class LLMClient:
             or 0
         )
 
-        # 3. Enregistrement
+        # Usage Tracking
         if self.tracker:
             self.tracker.add_usage(
                 prompt_tokens=prompt_tokens,

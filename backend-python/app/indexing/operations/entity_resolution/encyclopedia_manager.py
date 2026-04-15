@@ -4,6 +4,10 @@ from typing import List, Dict, Optional
 from app.core.settings import settings
 from app.models.domain import SiraEntityType
 from app.indexing.operations.text.text_utils import normalize_entity_name
+import logging
+
+logger = logging.getLogger(__name__)
+
 class EncyclopediaManager:
     """
     Manages the master reference data (Encyclopedia) for entity canonicalization.
@@ -27,15 +31,15 @@ class EncyclopediaManager:
         """
         json_path = Path("app/core/data/encyclopedia.json")
         if not json_path.exists():
-            print(f"Encyclopedia file not found at {json_path}")
+            logger.error(f"❌ Encyclopedia file not found at {json_path}. Anchoring will be disabled.")
             return
 
         try:
             with open(json_path, "r", encoding="utf-8") as f:
                 self.data = json.load(f)
-            print(f"Encyclopedia loaded with {len(self.data)} entries.")
+            logger.info(f"📚 Encyclopedia successfully loaded with {len(self.data)} entries.")
         except Exception as e:
-            print(f"Failed to load encyclopedia: {e}")
+            logger.critical(f"🔥 Critical Failure: Could not parse encyclopedia JSON: {e}")
             self.data = []
 
     def find_match(self, title: str, entity_type: str) -> List[Dict]:

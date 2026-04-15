@@ -3,8 +3,11 @@ from app.indexing.operations.entity_resolution.llm_resolver import LLMResolver
 from app.indexing.operations.entity_resolution.core_resolver import CoreResolver
 
 from typing import Tuple
+
 import pandas as pd
 
+import logging
+logger = logging.getLogger(__name__)
 
 class EntityResolutionEngine:
     """
@@ -43,6 +46,9 @@ class EntityResolutionEngine:
         """
         if df.empty:
             return df, {}
+        
+        initial_count = len(df)
+        logger.info(f"🚀 Starting Entity Resolution Engine on {initial_count} raw entities.")
 
         # The tracker maintains the global 'who is who' state during the run
         tracker = IdentityTracker()
@@ -52,13 +58,18 @@ class EntityResolutionEngine:
         df, core_mappings = self.core.resolve(df)
         for old, new in core_mappings.items():
             tracker.add_mapping(old, new)
+        logger.info(f"🧬 Core Phase: Registered {len(core_mappings)} algorithmic mappings.")
 
         # 2. LLM RESOLUTION PHASE
         # Tackles complex cases (anchoring doubts or semantic variants).
-        df, llm_mappings = await self.llm.resolve_complex_cases(df)
-        for old, new in llm_mappings.items():
-            tracker.add_mapping(old, new)
-
+        try:
+            df, llm_mappings = await self.llm.resolve_complex_cases(df)
+            for old, new in llm_mappings.items():
+                tracker.add_mapping(old, new)
+            logger.info(f"🧠 LLM Phase: Registered {len(llm_mappings)} semantic mappings.")
+        except Exception as e:
+            logger.error(f"❌ Critical Error during LLM Resolution: {e}")
+        
         # 3. TRANSITIVE MAPPING GENERATION
         # Flattens all chains (e.g., A -> B -> ID_1 becomes A -> ID_1).
         final_map = tracker.resolve()
@@ -76,6 +87,10 @@ class EntityResolutionEngine:
         # Merges rows that now share the same title and type.
         final_df = self._aggregate_entities(df)
 
+        # BILAN FINAL
+        reduction = initial_count - len(final_df)
+        logger.info(f"✅ Resolution Complete: {initial_count} -> {len(final_df)} entities ({reduction} duplicates removed).")        
+        
         return final_df, final_map
 
     def _aggregate_entities(self, df: pd.DataFrame) -> pd.DataFrame:

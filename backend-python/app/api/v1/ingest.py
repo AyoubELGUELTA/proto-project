@@ -23,7 +23,12 @@ from app.indexing.operations.entity_resolution.resolution_engine import EntityRe
 
 from app.models.domain import TextUnit
 
-
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%H:%M:%S'
+)
 async def ingest_single_file(file: UploadFile):
     # 1. INIT BASE SERVICES
     db = PostgresClient()
