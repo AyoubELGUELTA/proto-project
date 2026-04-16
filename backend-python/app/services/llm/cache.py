@@ -20,14 +20,15 @@ class LLMCache:
         Initializes the Redis client and validates the connection.
         
         Args:
-            redis_url: The connection string (e.g., 'redis://localhost:6379/0').
+            redis_url (str): The connection string (e.g., 'redis://localhost:6379/0').
         """
         try:
             self.client = redis.from_url(redis_url, decode_responses=True)
-            # Connectivity check
+            # Connectivity check to ensure the service is reachable
             self.client.ping()
+            logger.info(f"💾 Redis Cache connected at {redis_url}")
         except redis.RedisError as e:
-            print(f"❌ Failed to connect to Redis: {e}")
+            logger.error(f"❌ Failed to connect to Redis: {e}")
             self.client = None
 
         # Default TTL: 7 days to balance freshness and cost savings
@@ -37,16 +38,13 @@ class LLMCache:
         """
         Generates a unique fingerprint (SHA-256) based on the request content.
         
-        To ensure stability, messages are serialized to JSON with sorted keys. 
-        This guarantees that the same logical request always produces the same cache key.
-        
         Args:
-            messages: List of message objects or strings sent to the LLM.
+            messages (List[Any]): List of message objects or strings sent to the LLM.
             
         Returns:
-            A prefixed hexadecimal string (e.g., 'llm_cache:5f4dcc3b...').
+            str: A prefixed hexadecimal string identifier.
         """
-        # Stringify each message object to ensure serializability
+        # Stringify each message object to ensure stability in serialization
         serialized = json.dumps([str(m) for m in messages], sort_keys=True)
         # SHA-256 provides a robust collision-resistant identifier
         hash_gen = hashlib.sha256(serialized.encode()).hexdigest()
@@ -57,19 +55,22 @@ class LLMCache:
         Retrieves a cached response if available (Cache HIT).
         
         Args:
-            messages: The prompt context used as the lookup key.
+            messages (List[Any]): The prompt context used as the lookup key.
             
         Returns:
-            The stored completion text if found, otherwise None (Cache MISS).
+            Optional[str]: The stored completion text or None on Cache MISS.
         """
         if not self.client:
             return None
             
         key = self._generate_key(messages)
         try:
-            return self.client.get(key)
+            cached_res = self.client.get(key)
+            if cached_res:
+                logger.debug(f"💾 Cache HIT for key: {key[:15]}...")
+            return cached_res
         except redis.RedisError as e:
-            print(f"⚠️ Redis Read Error: {e}")
+            logger.warning(f"⚠️ Redis Read Error: {e}")
             return None
 
     def set(self, messages: List[Any], response: str):
@@ -77,8 +78,8 @@ class LLMCache:
         Stores an LLM response in Redis with an automatic expiration.
         
         Args:
-            messages: The original prompt context (base for the fingerprint).
-            response: The raw text completion to be stored.
+            messages (List[Any]): The original prompt context.
+            response (str): The raw text completion to be stored.
         """
         if not self.client:
             return
@@ -87,6 +88,6 @@ class LLMCache:
         try:
             # SETEX atomicity: Sets the value and expiration in a single operation
             self.client.setex(key, self.ttl, response)
-            print(f"✅ Cached response for key: {key[:20]}...")
+            logger.debug(f"✅ Response cached: {key[:15]}...")
         except redis.RedisError as e:
-            print(f"⚠️ Failed to write to Redis cache: {e}")
+            logger.warning(f"⚠️ Failed to write to Redis cache: {e}")

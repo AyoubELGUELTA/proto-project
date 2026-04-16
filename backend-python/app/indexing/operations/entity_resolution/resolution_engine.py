@@ -46,53 +46,56 @@ class EntityResolutionEngine:
         """
         if df.empty:
             return df, {}
-        
+
         initial_count = len(df)
         logger.info(f"🚀 Starting Entity Resolution Engine on {initial_count} raw entities.")
-
-        # The tracker maintains the global 'who is who' state during the run
         tracker = IdentityTracker()
         
-        # 1. CORE RESOLUTION PHASE
-        # Uses phonetic similarity and exact Encyclopedia lookups.
+        # --- 1. RESOLUTION (Core + LLM) ---
+        # Collect all redirections suggested by deterministic and semantic algorithms
         df, core_mappings = self.core.resolve(df)
-        for old, new in core_mappings.items():
+        for old, new in core_mappings.items(): 
             tracker.add_mapping(old, new)
-        logger.info(f"🧬 Core Phase: Registered {len(core_mappings)} algorithmic mappings.")
-
-        # 2. LLM RESOLUTION PHASE
-        # Tackles complex cases (anchoring doubts or semantic variants).
+        
         try:
             df, llm_mappings = await self.llm.resolve_complex_cases(df)
-            for old, new in llm_mappings.items():
+            for old, new in llm_mappings.items(): 
                 tracker.add_mapping(old, new)
-            logger.info(f"🧠 LLM Phase: Registered {len(llm_mappings)} semantic mappings.")
         except Exception as e:
-            logger.error(f"❌ Critical Error during LLM Resolution: {e}")
-        
-        # 3. TRANSITIVE MAPPING GENERATION
-        # Flattens all chains (e.g., A -> B -> ID_1 becomes A -> ID_1).
+            logger.error(f"❌ LLM Resolution Error: {e}")
+
+        # --- 2. ENCYCLOPEDIA ANCHORING ---
+        # If a canonical_id was found, we inject it as the final hop in the redirection chain.
+        # This ensures that even resolved names point to the official Encyclopedia ID.
+
+        mask = df["canonical_id"].notna()
+        if mask.any():
+            logger.debug(f"⚓ Injecting {mask.sum()} Encyclopedia anchors into tracker.")
+            for _, row in df[mask].iterrows():
+                tracker.add_mapping(row["title"], row["canonical_id"])
+
+        # --- 3. FINAL TRANSITIVE RESOLUTION ---
+        # The tracker flattens chains (e.g., 'A' -> 'B' -> 'C' implies 'A' -> 'C')
         final_map = tracker.resolve()
 
-        # 4. DATAFRAME HARMONIZATION
-        # Apply the final names/IDs to the title column.
+        # --- 4. PHYSICAL UPDATE & AGGREGATION ---
+        # Update titles in the DataFrame using the flattened mapping
         df["title"] = df["title"].replace(final_map)
         
-        # SAFETY INVARIANT: If an entity is anchored to a Sira Encyclopedia ID,
-        # its 'title' MUST become that ID to ensure global graph consistency.
-        mask = df["canonical_id"].notna()
-        df.loc[mask, "title"] = df.loc[mask, "canonical_id"]
-
-        # 5. FINAL PHYSICAL AGGREGATION
-        # Merges rows that now share the same title and type.
+        # Consolidate rows that now share the same title/ID (post-anchoring duplicates)
         final_df = self._aggregate_entities(df)
 
-        # BILAN FINAL
-        reduction = initial_count - len(final_df)
-        logger.info(f"✅ Resolution Complete: {initial_count} -> {len(final_df)} entities ({reduction} duplicates removed).")        
-        
-        return final_df, final_map
+        # --- 5. VALIDATION ---
+        # Verify that all mapping targets actually exist in the final nodes list
+        unique_titles = set(final_df["title"])
+        errors = [v for v in final_map.values() if v not in unique_titles]
+        if errors:
+            logger.warning(f"⚠️ {len(set(errors))} mapping targets missing from final nodes (Integrity risk).")
 
+        logger.info(f"✅ Resolution Complete: {initial_count} -> {len(final_df)} entities.")        
+        return final_df, final_map
+    
+    
     def _aggregate_entities(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Physically merges duplicate rows into unified entity records.
@@ -123,3 +126,20 @@ class EntityResolutionEngine:
         
         # Grouping by both title and type preserves semantic distinctions
         return df.groupby(["title", "type"], sort=False).agg(agg_rules).reset_index()
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

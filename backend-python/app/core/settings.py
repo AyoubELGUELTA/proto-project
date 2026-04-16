@@ -66,7 +66,6 @@ class Settings(BaseSettings):
 # Instanciation
 try:
     settings = Settings()
-    # Petit print de debug pour toi
     print(f"✅ Configuration Monorepo validée")
     print(f"📍 Root (Monorepo): {ROOT_DIR}")
     print(f"💾 Storage: {settings.local_storage_path}")

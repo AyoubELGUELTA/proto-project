@@ -58,19 +58,20 @@ class IdentityTracker:
         """
         final_map = {}
         for key in self._mapping:
-            path = set([key])
+            path = {key}
             current = self._mapping[key]
             
-            # Traverse the chain until no further redirection is found
+            # 1. We follow the chain
             while current in self._mapping and current not in path:
                 path.add(current)
                 current = self._mapping[current]
-
-        # USEFUL DEBUG LINE ----
-        if current != self._mapping[key]:
-            logger.debug(f"Transitive hit: '{key}' resolved to '{current}' (via {len(path)} steps)")
-        #  ---- END
-
+                
+            # 2. We register each key
             final_map[key] = current
+            
+            # Log optionnel pour le debug
+            if current != self._mapping[key]:
+                logger.debug(f"Transitive hit: '{key}' resolved to '{current}'")
+
         logger.info(f"✅ Identity resolution complete. {len(final_map)} identities stabilized.")
         return final_map

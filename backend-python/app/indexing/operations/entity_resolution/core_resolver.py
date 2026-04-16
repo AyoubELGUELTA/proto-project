@@ -64,11 +64,12 @@ class CoreResolver:
             
             # Case A: Unique Match found - Direct Anchoring
             if len(matches) == 1:
-                logger.info(f"✅ Encyclopedia Match: '{old_title}' anchored to ID {new_id}")
                 old_title = row["title"]
                 new_title = matches[0]["CANONICAL_NAME"]
                 new_id = matches[0]["ID"]
-                
+
+                logger.info(f"✅ Encyclopedia Match: '{old_title}' anchored to ID {new_id}")
+
                 local_changes[old_title] = new_id
                 resolved_df.at[idx, "canonical_id"] = new_id
                 resolved_df.at[idx, "title"] = new_title

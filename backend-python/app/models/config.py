@@ -1,6 +1,8 @@
 # Copyright (c) 2024 Microsoft Corporation.
 # Licensed under the MIT License
 
+# THE LOGIC OF THIS FILE WAS MOVED TO CORE/CONFIG/ FOLDER, IT REMAINS FOR TESTS PURPOSES ONLY
+
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
 from typing import List, Optional

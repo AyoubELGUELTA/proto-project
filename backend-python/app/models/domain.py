@@ -1,19 +1,30 @@
+import logging
 from enum import Enum
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
-from enum import Enum
-from typing import List, Optional
+logger = logging.getLogger(__name__)
 
 class EntityCategory(str, Enum):
+    """
+    High-level classification for Sira entities.
+    Used for broad filtering and graph visualization layers.
+    """
     GOD = "God"
-    HUMAN = "Human"           # Personnes physiques
-    GEOGRAPHIC = "Geographic" # Lieux, villes, points GPS
-    CONCEPTUAL = "Conceptual" # Idées, groupes, théologie
-    EVENT = "Event"           # Moments dans le temps, batailles
-    OBJECT = "Object"         # Documents, animaux, objets physiques
+    HUMAN = "Human"           # Physical persons
+    GEOGRAPHIC = "Geographic" # Cities, mountains, GPS points
+    CONCEPTUAL = "Conceptual" # Tribes, groups, theology, ideas
+    EVENT = "Event"           # Battles, treaties, specific moments
+    OBJECT = "Object"         # Documents, animals, physical relics
 
 class SiraEntityType(str, Enum):
+    """
+    Specific entity types with descriptions and category mapping.
+    
+    This Enum uses a custom constructor to attach semantic metadata 
+    to each member, which can be used to ground LLM prompts.
+    """
+    # DIVINE
     GOD = "God", "Allah, The One and Only One", EntityCategory.GOD
 
     # HUMANS
@@ -46,6 +57,7 @@ class SiraEntityType(str, Enum):
     ANIMAL = "Animal", "Specifically named animals", EntityCategory.OBJECT
 
     def __new__(cls, value, description, category):
+        """Custom constructor to store metadata within the Enum member."""
         obj = str.__new__(cls, value)
         obj._value_ = value
         obj.description = description
@@ -54,18 +66,32 @@ class SiraEntityType(str, Enum):
 
     @classmethod
     def get_category(cls, type_name: str) -> Optional[EntityCategory]:
-        """Récupère la catégorie à partir de la string du LLM."""
+        """
+        Retrieves the parent category from a string value (usually from LLM output).
+        """
         try:
             return cls(type_name).category
         except ValueError:
+            logger.debug(f"⚠️ Unknown entity type: '{type_name}'. No category mapped.")
             return None
 
 class TextUnit(BaseModel):
-    """Représente un fragment de texte enrichi prêt pour l'extraction de graphe."""
-    id: str = Field(..., description="Hash unique du contenu")
-    text: str
-    headings: List[str] = []
-    page_numbers: List[int] = []
-    tables: List[str] = []  # Markdown
-    images_b64: List[str] = []
-    metadata: dict = {}
+    """
+    Represents a structured fragment of text enriched with visual and spatial data.
+    
+    This is the primary unit of work for the GraphRAG extraction process. 
+    It encapsulates everything needed for the LLM to understand context: 
+    narrative text, structural headings, tables, and associated images.
+    """
+    id: str = Field(..., description="Unique SHA-256 hash of the content")
+    text: str = Field(..., description="The primary narrative text")
+    headings: List[str] = Field(default_factory=list, description="Structural hierarchy (TOC path)")
+    page_numbers: List[int] = Field(default_factory=list, description="Source pages in the original PDF")
+    tables: List[str] = Field(default_factory=list, description="Markdown representation of tables")
+    images_b64: List[str] = Field(default_factory=list, description="Base64 encoded visual assets (pre-storage)")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Extensible metadata (bbox, refinement flags)")
+
+    class Config:
+        """Pydantic configuration."""
+        populate_by_name = True 
+        arbitrary_types_allowed = True # Allows to store non trivial type objetcs in the df
