@@ -68,26 +68,3 @@ def normalize_entity_name(name: str) -> str:
     normalized = re.sub(r'\s+', ' ', normalized).strip()
     
     return normalized
-
-def normalize_entity_title(name: str) -> str:
-    """
-    Lightweight normalization for display titles.
-    
-    Used to standardize the 'Title' field in the database without 
-    the aggressive phonetic changes used in the matching key.
-    Ensures titles are uppercase and clean of special delimiters.
-    """
-    if not name:
-        return ""
-    
-    # Uppercase & Accent stripping
-    name = name.upper()
-    name = ''.join(c for c in unicodedata.normalize('NFD', name)
-                  if unicodedata.category(c) != 'Mn')
-    
-    # Replace separators with spaces
-    name = re.sub(r'[-_]', ' ', name)
-    
-    # Final cleanup
-    name = ' '.join(name.split())
-    return name

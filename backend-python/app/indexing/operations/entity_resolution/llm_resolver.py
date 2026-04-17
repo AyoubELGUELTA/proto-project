@@ -12,7 +12,7 @@ from app.core.prompts.graph_prompts import (
     ANCHORING_RESOLUTION_USER_PROMPT
 )
 from app.core.config.graph_config import MAX_CLUSTER_BATCH
-from app.indexing.operations.text.text_utils import similarity, normalize_entity_name
+from app.indexing.operations.text.text_utils import similarity
 
 import logging
 
@@ -34,7 +34,7 @@ class LLMResolver:
         self.llm_service = llm_service
 
 
-    async def resolve_complex_cases(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, str]]:
+    async def llm_resolve(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, str]]:
         """
         Coordinates the high-level workflow for semantic resolution.
         
@@ -49,11 +49,13 @@ class LLMResolver:
         
         # 1. ENCYCLOPEDIA ANCHORING
         # Handles cases where the CoreResolver flagged multiple potential matches.
+
         if "anchoring_candidates" in df.columns:
             ambiguous_df = df[df["anchoring_candidates"].notna()]
             if not ambiguous_df.empty:
                 logger.info(f"⚓ Resolving anchoring for {len(ambiguous_df)} ambiguous entities...")
-                tasks = [self.resolve_anchoring(row) for _, row in ambiguous_df.iterrows()]
+
+                tasks = [self._resolve_anchoring(row) for _, row in ambiguous_df.iterrows()]
                 results = await asyncio.gather(*tasks)
                 
                 for idx, result in zip(ambiguous_df.index, results):
@@ -63,29 +65,27 @@ class LLMResolver:
                         all_llm_mappings[old_name] = choice
                         df.at[idx, "canonical_id"] = choice
 
+
         # 2. SEMANTIC CLUSTERING (Orphan Entities)
         # Groups entities that didn't match the Encyclopedia but might be duplicates of each other.
+
         orphans = df[df["canonical_id"].isna()].copy()
         if not orphans.empty:
             logger.info(f"🧩 Clustering {len(orphans)} orphan entities for semantic resolution...")
-            for entity_type, type_group in orphans.groupby("type"):
-                # Use Graph theory and NLP to find potential duplicate groups
+
+            for entity_category, type_group in orphans.groupby("category"):
                 clusters = self._create_hybrid_clusters(type_group) 
-                
                 for cluster in clusters:
-                    # Batch processing to respect LLM context window limits (and avoid hallucinations)
-                    if len(cluster) > MAX_CLUSTER_BATCH: #TODO add a recursive methode to handle big clusters like this : 100 --> 4 x 25 to process, then we have 4 x 12, we aggregate --> 2 x 24 , we process ...
-                        for i in range(0, len(cluster), MAX_CLUSTER_BATCH):
-                            batch = cluster.iloc[i:i + MAX_CLUSTER_BATCH]
-                            mapping = await self.resolve_cluster(batch, str(entity_type))
-                            all_llm_mappings.update(mapping)
+                    if len(cluster) >= 2:
+                        mapping = await self._pyramidal_resolve(cluster, str(entity_category))
+                        all_llm_mappings.update(mapping)
                     else:
-                        mapping = await self.resolve_cluster(cluster, str(entity_type))
+                        mapping = await self._resolve_cluster(cluster, str(entity_category))
                         all_llm_mappings.update(mapping)
 
         return df, all_llm_mappings
 
-    async def resolve_cluster(self, cluster_df: pd.DataFrame, entity_type: str) -> Dict[str, str]:
+    async def _resolve_cluster(self, cluster_df: pd.DataFrame, entity_type: str) -> Dict[str, str]:
         """
         Analyzes a semantic cluster via LLM to identify internal duplicates.
         
@@ -100,7 +100,7 @@ class LLMResolver:
         # Context optimization: merge list of descriptions and truncate to keep focus on identifiers
         candidates_list = []
         for row in cluster_df.itertuples():
-            full_context = " ".join(set(row.description)) if isinstance(row.description, list) else str(row.description)
+            full_context = str(row.description).replace(" | ", " ")            
             clean_context = full_context.replace("\n", " ").strip()
             snippet = clean_context[:250] + "..." if len(clean_context) > 300 else clean_context
             candidates_list.append(f"- {row.title} (Type: {entity_type}): {snippet}")
@@ -125,7 +125,7 @@ class LLMResolver:
             return {}
         
 
-    async def resolve_anchoring(self, row: pd.Series) -> Dict[str, Any]:
+    async def _resolve_anchoring(self, row: pd.Series) -> Dict[str, Any]:
         """
         Resolves ambiguity when an entity matches multiple Encyclopedia entries.
         
@@ -158,6 +158,77 @@ class LLMResolver:
 
 
 
+    async def _pyramidal_resolve(self, cluster_df: pd.DataFrame, entity_category: str) -> Dict[str, str]:
+        """
+        Processes large clusters by batches and recursively re-evaluates 
+        survivors until a stable set is reached.
+        """
+        current_df = cluster_df.copy()
+        global_mappings = {}
+
+        while len(current_df) > 1:
+            # Case 1: Cluster fits in a single batch, process and exit
+            if len(current_df) <= MAX_CLUSTER_BATCH:
+                final_mapping = await self._resolve_cluster(current_df, entity_category)
+                self._update_transitive_mappings(global_mappings, final_mapping)
+                break
+
+            # Case 2: Cluster is too large, split into batches and process in parallel
+            batches = [
+                current_df.iloc[i : i + MAX_CLUSTER_BATCH] 
+                for i in range(0, len(current_df), MAX_CLUSTER_BATCH)
+            ]
+            
+            logger.info(f"🚀 Pyramidal Round: Processing {len(batches)} batches for {len(current_df)} entities...")
+            
+            # Execute all batches concurrently to save time
+            results = await asyncio.gather(*[self._resolve_cluster(b, entity_category) for b in batches])
+            
+            # Merge results from the current round
+            round_mappings = {}
+            for m in results:
+                round_mappings.update(m)
+
+            # Exit if no further merges are identified by the LLM
+            if not round_mappings:
+                break 
+
+            # Update global registry with new findings (maintaining transitivity)
+            self._update_transitive_mappings(global_mappings, round_mappings)
+
+            # Prepare for next round: keep only 'surviving' entities
+            # (Entities that were NOT the source of a merge)
+            merged_away = set(round_mappings.keys())
+            current_df = current_df[~current_df["title"].isin(merged_away)]
+            
+            # Emergency break to prevent infinite loops if LLM generates static results
+            if len(merged_away) == 0:
+                break
+
+        return global_mappings
+
+    def _update_transitive_mappings(self, master: Dict[str, str], new: Dict[str, str]):
+        """
+        Updates the master mapping dictionary ensuring transitive integrity.
+        Logic: If A -> B already exists and we find B -> C, update A to point to C.
+        """
+        # 1. Integrate new findings into the master dictionary
+        for source, target in new.items():
+            master[source] = target
+        
+        # 2. Resolve multi-hop mappings (Transitivity)
+        # We iterate to ensure all paths lead to the final canonical representative
+        for source in list(master.keys()):
+            path = [] # Track path to detect circular references
+            target = master[source]
+            
+            while target in master and target not in path:
+                path.append(target)
+                target = master[target]
+            
+            master[source] = target
+
+
     def _create_hybrid_clusters(self, df: pd.DataFrame) -> list:
         """
         Groups entities into 'potential duplicate clusters' using a graph-based approach.
@@ -174,10 +245,10 @@ class LLMResolver:
         if len(df) <= 1: return [df]
 
         df = df.copy()
-        df["norm_name"] = df["title"].apply(normalize_entity_name)
         
         # Combine name and description for TF-IDF vectorization
-        texts = df.apply(lambda x: f"{x['title']} {' '.join(x['description'])}", axis=1).tolist()
+        texts = df.apply(lambda x: f"{x['title']} {str(x['description']).replace('|', ' ')}", axis=1).tolist()
+        
         vectorizer = TfidfVectorizer(stop_words='english') 
         tfidf_matrix = vectorizer.fit_transform(texts)
         cosine_sim = cosine_similarity(tfidf_matrix)
@@ -186,12 +257,20 @@ class LLMResolver:
         G.add_nodes_from(range(len(df)))
 
         for i in range(len(df)):
+
+            slug_i = df.iloc[i]["title"]
+
             for j in range(i + 1, len(df)):
-                # Similarity criteria (Layered approach)
-                is_semantic = cosine_sim[i][j] >= 0.3
-                name_i, name_j = df.iloc[i]["norm_name"], df.iloc[j]["norm_name"]
-                is_contained = (name_i in name_j) or (name_j in name_i) if (len(name_i) > 2 and len(name_j) > 2) else False
-                is_fuzzy = similarity(name_i, name_j) >= 0.7
+                slug_j = df.iloc[j]["title"]
+
+                # 1. Similarity criteria (Layered approach)
+                is_semantic = cosine_sim[i][j] >= 0.3         
+                
+                # 2. Containment check
+                is_contained = (slug_i in slug_j) or (slug_j in slug_i) if (len(slug_i) > 4 and len(slug_j) > 4) else False     
+                
+                
+                is_fuzzy = similarity(slug_i, slug_j) >= 0.75
 
                 if is_semantic or is_contained or is_fuzzy:
                     G.add_edge(i, j)
@@ -204,5 +283,5 @@ class LLMResolver:
 
     
     def _format_anchoring_candidates(self, candidates: list) -> str:
-        """Formats the list of reference candidates for the LLM prompt."""
+        """Formats the list of reference candidates from the encyclopedia for the LLM prompt."""
         return "\n".join([f"- ID: {c.get('ID', 'UNKNOWN')} | Name: {c.get('CANONICAL_NAME', 'UNKNOWN')} | Summary: {c.get('CORE_SUMMARY', 'No summary.')}" for c in candidates])

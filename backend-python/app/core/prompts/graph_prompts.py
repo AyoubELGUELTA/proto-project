@@ -22,25 +22,35 @@ The following metadata provides the global context of the document this text bel
 
 -Steps-
 1. Identify all entities. For each identified entity, extract:
+
 - entity_name: Name of the entity, capitalized. 
   *STRICT RULE*: Use English names or English phonetic transliteration only.
 - entity_type: One of the following types: [{entity_types}]
-- entity_description: Concise description (MAX 3-4 sentences). Focus on titles (Kunya), lineage (Nasab), and key historical events mentioned ONLY in this text. 
-  *GROUNDING*: Do not use external knowledge.
-
+- entity_description: 
+  A strictly factual summary of what the text says about this entity.
+  Start directly with the fact (e.g., "Uncle of the Prophet", "Site of the burial").
+  If the text only names the entity without details, leave the description empty or use "Mentioned in the text".
+  *GROUDING* No external or general knowledge should be put if it is not mentioned in the text.
+  
 Format each entity as ("entity"<|><entity_name><|><entity_type><|><entity_description>)
 
 2. Identify all pairs of (source_entity, target_entity) that are *clearly related*.
 For each pair, extract:
 - source_entity: name as identified in step 1
 - target_entity: name as identified in step 1
-- relationship_description: Explanation of the connection (MAX 3-4 sentences). Use English only.
+- relationship_description: 
+  A single, concise sentence (MAX 15 words). Focus on the verb/action linking them.
+  Bad: "Muhammad is related to Maymuna because he chose to marry her after the pilgrimage at a place called Sarif."
+  Good: "Muhammad married Maymuna after the pilgrimage at Sarif."
+
   *GROUNDING*: Extract only relationships explicitly stated or directly implied by the text.
+
 - relationship_strength: numeric score (1-10)
 
 Format each relationship as ("relationship"<|><source_entity><|><target_entity><|><relationship_description><|><relationship_strength>)
 
 3. Return output in English using **##** as the list delimiter.
+
 4. When finished, output <|COMPLETE|>
 
 ######################
@@ -49,54 +59,62 @@ Format each relationship as ("relationship"<|><source_entity><|><target_entity><
 
 Example 1:
 Entity_types: Prophet, Sahabi, City, Battle
+
 Text:
+
 After the Hijra to Madinah, the Prophet Muhammad ﷺ organized the defense of the community. In the second year, the Battle of Badr took place. Hamza ibn Abd al-Muttalib showed great bravery during this conflict.
+
 ######################
 Output:
-("entity"<|>MUHAMMAD<|>Prophet<|>The Prophet of Islam who led the community in Madinah)
+("entity"<|>MUHAMMAD<|>Prophet<|>Organized the defense of the community in Madinah after the Hijra)
 ##
-("entity"<|>MADINAH<|>City<|>The city where the Prophet migrated during the Hijra)
+("entity"<|>MADINAH<|>City<|>Location where the community was defended after the Hijra)
 ##
-("entity"<|>BATTLE OF BADR<|>Battle<|>A major military conflict in the second year of Hijra)
+("entity"<|>BATTLE OF BADR<|>Battle<|>Military conflict that occurred in the second year of Hijra)
 ##
-("entity"<|>HAMZA IBN ABD AL-MUTTALIB<|>Sahabi<|>A brave companion and uncle of the Prophet who fought at Badr)
+("entity"<|>HAMZA IBN ABD AL-MUTTALIB<|>Sahabi<|>Participant in the Battle of Badr noted for bravery)
 ##
-("relationship"<|>MUHAMMAD<|>MADINAH<|>The Prophet migrated to and led the community in Madinah<|>10)
+("relationship"<|>MUHAMMAD<|>MADINAH<|>Muhammad organized the community defense in Madinah<|>10)
 ##
-("relationship"<|>HAMZA IBN ABD AL-MUTTALIB<|>BATTLE OF BADR<|>Hamza was a key combatant in the Battle of Badr<|>9)
+("relationship"<|>HAMZA IBN ABD AL-MUTTALIB<|>BATTLE OF BADR<|>Hamza was a combatant during the Battle of Badr<|>9)
 ##
-("relationship"<|>MUHAMMAD<|>BATTLE OF BADR<|>The Prophet commanded the forces during the Battle of Badr<|>9)
+("relationship"<|>MUHAMMAD<|>BATTLE OF BADR<|>The Battle of Badr occurred under the Prophet's leadership of the community<|>8)
 <|COMPLETE|>
 
 Example 2:
 Entity_types: MotherBeliever, Prophet, City, Location, Sahabi, SacredText
+
 Text:
+
 Maymuna bint al-Harith était la dernière épouse du Prophète. Le mariage a eu lieu à Sarif, une localité située près de La Mecque, après que les musulmans ont quitté la ville. Son oncle, Al-'Abbas, a agi comme son tuteur pour cette union bénie par Allah. Des références à la piété des épouses se trouvent dans le Coran.
+
 ######################
 Output:
-("entity"<|>MAYMUNA BINT AL HARITH<|>MotherBeliever<|>The last wife of the Prophet Muhammad and a prominent figure in the early Muslim community)
+("entity"<|>MAYMUNA BINT AL HARITH<|>MotherBeliever<|>The last wife of the Prophet)
 ##
-("entity"<|>MUHAMMAD<|>Prophet<|>The Prophet of Islam and husband of Maymuna bint al-Harith)
+("entity"<|>MUHAMMAD<|>Prophet<|>The Prophet and husband of Maymuna bint al-Harith)
 ##
-("entity"<|>SARIF<|>Location<|>A place near Mecca where the marriage of Maymuna and the Prophet was consummated)
+("entity"<|>SARIF<|>Location<|>Place near Mecca where the marriage occurred)
 ##
-("entity"<|>MECCA<|>City<|>The holy city from which the Muslims departed before the marriage at Sarif)
+("entity"<|>MECCA<|>City<|>City that the Muslims left before the marriage at Sarif)
 ##
-("entity"<|>AL 'ABBAS<|>Sahabi<|>The uncle of the Prophet who acted as the guardian for Maymuna during her marriage)
+("entity"<|>AL 'ABBAS<|>Sahabi<|>Uncle of Maymuna who acted as her guardian for the marriage)
 ##
-("entity"<|>ALLAH<|>God<|>The One True God in Islam who is mentioned as the source of blessing for the union)
+("entity"<|>ALLAH<|>God<|>Source of blessing for the union between Maymuna and the Prophet)
 ##
-("entity"<|>QURAN<|>SacredText<|>The holy book of Islam containing references to the piety of the Prophet's wives)
+("entity"<|>QURAN<|>SacredText<|>Text containing references to the piety of the Prophet's wives)
 ##
-("relationship"<|>MUHAMMAD<|>MAYMUNA BINT AL HARITH<|>Muhammad married Maymuna bint al-Harith as his final wife<|>10)
+("relationship"<|>MUHAMMAD<|>MAYMUNA BINT AL HARITH<|>Muhammad married Maymuna bint al-Harith as his last wife<|>10)
 ##
-("relationship"<|>AL 'ABBAS<|>MAYMUNA BINT AL HARITH<|>Al-'Abbas acted as the legal guardian for Maymuna during her marriage contract<|>9)
+("relationship"<|>AL 'ABBAS<|>MAYMUNA BINT AL HARITH<|>Al-'Abbas acted as guardian for Maymuna during the marriage union<|>9)
 ##
-("relationship"<|>MAYMUNA BINT AL HARITH<|>SARIF<|>The marriage of Maymuna took place and was consummated in the location of Sarif<|>9)
+("relationship"<|>MAYMUNA BINT AL HARITH<|>SARIF<|>The marriage took place in the location of Sarif<|>9)
 ##
-("relationship"<|>MAYMUNA BINT AL HARITH<|>MECCA<|>Maymuna's marriage occurred in proximity to Mecca after the Muslims left the city<|>8)
+("relationship"<|>MAYMUNA BINT AL HARITH<|>MECCA<|>Maymuna married near Mecca after the Muslims departed the city<|>8)
 ##
-("relationship"<|>ALLAH<|>MAYMUNA BINT AL HARITH<|>The union of Maymuna is described as being blessed by Allah<|>7)
+("relationship"<|>ALLAH<|>MAYMUNA BINT AL HARITH<|>The union of Maymuna was blessed by Allah<|>7)
+##
+("relationship"<|>QURAN<|>MAYMUNA BINT AL HARITH<|>The Quran refers to the piety of wives including Maymuna<|>6)
 <|COMPLETE|>
 
 ######################
@@ -118,18 +136,39 @@ ENTITY_SUMMARIZE_SYSTEM_PROMPT = """
 You are a precision-oriented assistant. Synthesize multiple entity descriptions into a single, factual, third-person summary.
 STRICT RULES:
 1. NO EXTERNAL KNOWLEDGE: Use ONLY the provided descriptions. Do not add birth dates, historical facts, or titles not present in the text.
-2. CONTRADICTIONS: If descriptions conflict, mention both possibilities neutrally.
-3. STYLE: Professional, objective, and concise.
-Limit to {max_length} words.
-"""
 
-RELATIONSHIP_SUMMARIZE_SYSTEM_PROMPT = """
-You are a precision-oriented assistant. Synthesize multiple descriptions of a relationship between two entities into one.
-STRICT RULES:
-1. NO EXTERNAL KNOWLEDGE: Only describe the connection as it appears in the provided data.
-2. FOCUS: Explain the nature, context, and duration of the link between the two subjects.
-3. STYLE: Professional and factual. Avoid flowery language.
+2. CONTRADICTIONS: If descriptions conflict, mention both possibilities neutrally.
+
+3. STYLE: Professional, objective, and concise.
+
+OUTPUT FORMAT:
+
 Limit to {max_length} words.
+
+Highly dense, professional prose.
+"""
+RELATIONSHIP_SUMMARIZE_SYSTEM_PROMPT = """
+You are a graph-optimization engine. Synthesize multiple descriptions of a relationship into a single, dense, and factual statement.
+
+STRICT RULES:
+
+1. NO INTRODUCTIONS: Start directly with the facts. Do not say "The relationship is..." or "Based on the data...".
+
+2. ATOMIC SYNTHESIS: Combine overlapping information. If multiple sources say the same thing, state it once.
+
+3. ONLY PROVIDED DATA: Never use external historical or religious knowledge. If the data is vague, stay vague.
+
+4. CHRONOLOGICAL ORDER: If dates or phases (Makkah/Madinah) are present, follow the timeline.
+
+5. ACTION-ORIENTED: Focus on the functional link (e.g., "A supported B during X", "A is the brother of B", "A fought alongside B at Y").
+
+OUTPUT FORMAT:
+
+Max {max_length} words.
+
+Single paragraph.
+
+Highly dense, professional prose.
 """
 
 COMMON_SUMMARIZE_USER_PROMPT = """

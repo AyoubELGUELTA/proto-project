@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from app.core.settings import settings
 from app.models.domain import SiraEntityType
-from app.indexing.operations.text.text_utils import normalize_entity_name
+from app.core.models.graph import slugify_entity
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,18 +31,26 @@ class EncyclopediaManager:
         """
         json_path = Path("app/core/data/encyclopedia.json")
         if not json_path.exists():
-            logger.error(f"❌ Encyclopedia file not found at {json_path}. Anchoring will be disabled.")
+            logger.error(f"❌ Encyclopedia file not found at {json_path}.")
             return
 
         try:
             with open(json_path, "r", encoding="utf-8") as f:
-                self.data = json.load(f)
-            logger.info(f"📚 Encyclopedia successfully loaded with {len(self.data)} entries.")
+                raw_data = json.load(f)
+            
+            for entry in raw_data:
+                # We inject the CATEGORY once here so find_match remains fast
+                if "TYPE" in entry:
+                    
+                    entry["CATEGORY"] = SiraEntityType.get_category(entry["TYPE"])
+            
+            self.data = raw_data
+            logger.info(f"📚 Encyclopedia loaded and enriched: {len(self.data)} entries.")
         except Exception as e:
-            logger.critical(f"🔥 Critical Failure: Could not parse encyclopedia JSON: {e}")
+            logger.critical(f"🔥 Failure parsing encyclopedia: {e}")
             self.data = []
 
-    def find_match(self, title: str, entity_type: str) -> List[Dict]:
+    def find_match(self, extracted_title_slug: str, extracted_category: str) -> List[Dict]:
         """
         Performs a deterministic search for a match in the reference data.
         
@@ -55,41 +63,46 @@ class EncyclopediaManager:
            to handle missing suffixes or slight variations.
         
         Args:
-            title: The raw name of the entity to match.
-            entity_type: The extracted type (SiraEntityType) of the entity.
+            title_slug: The slugified name/title of the entity to match.
+            category: The pre-assigned semantic category of the entity.
             
         Returns:
             A list of dictionary entries from the encyclopedia that potentially match the input.
         """
-        # Normalization removes accents, case sensitivity, and extra spaces for robust comparison
-        search_norm = normalize_entity_name(title)
-        input_category = SiraEntityType.get_category(entity_type)
+        # Note: 'title' is assumed to be already slugified by the EntityModel (e.g., 'IBN_ABBAS')
+
         matches = []
         
+        target_title = slugify_entity(extracted_title_slug)
+        target_cat_str = str(extracted_category.value if hasattr(extracted_category, 'value') else extracted_category).strip()
+
         for entry in self.data:
-            # 1. Category-based sanity check
-            # Prevents merging entities with similar names but different natures (e.g. a person vs a battle)
-            entry_category = SiraEntityType.get_category(entry["TYPE"])
-            if input_category and entry_category:
-                if input_category != entry_category:
-                    continue
-            elif entry["TYPE"] != entity_type:
+            # On normalise aussi la catégorie de l'entrée d'encyclopédie
+            e_cat = entry.get("CATEGORY")
+            entry_cat_str = str(e_cat.value if hasattr(e_cat, 'value') else e_cat).strip()
+
+            # 1. Fast Category Check
+            if target_cat_str and entry_cat_str != target_cat_str:
+                # Optionnel: décommenter pour débugger
+                logger.debug(f"❌ Category mismatch for {entry['ID']}: {entry_cat_str} != {target_cat_str}")
                 continue
                 
-            # 2. Canonical and Alias fingerprinting
-            canonical_norm = normalize_entity_name(entry["CANONICAL_NAME"])
-            aliases_norm = [normalize_entity_name(a) for a in entry.get("ALIASES", [])]
-            
-            # 3. Layer 1: Perfect match (High Confidence)
-            # Checks against normalized canonical name or any listed aliases
-            if search_norm == canonical_norm or search_norm in aliases_norm:
+            # 2. Perfect Match on ID
+            if target_title == entry["ID"]:
+                matches.append(entry)
+                continue
+
+            # 3. Alias Check
+            aliases_slugs = [slugify_entity(a) for a in entry.get("ALIASES", [])]
+            if target_title in aliases_slugs:
                 matches.append(entry)
                 continue
             
-            # 4. Layer 2: Fuzzy/Partial containment (Medium Confidence)
-            # Only applied to strings > 4 chars to avoid false positives on short names
-            if len(search_norm) > 4: 
-                if search_norm in canonical_norm or any(search_norm in a for a in aliases_norm):
+            # 4. Partial containment
+            if len(target_title) > 4: 
+                if target_title in entry["ID"] or any(target_title in a for a in aliases_slugs):
                     matches.append(entry)
 
         return matches
+
+       

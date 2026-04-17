@@ -77,7 +77,7 @@ class GraphService:
         entities_df, global_mapping = await self.resolution_engine.run(entities_df)
 
         # Frequency update post-fusion (count unique source_ids per resolved entity)
-        entities_df["frequency"] = entities_df["source_id"].apply(len)
+        entities_df["frequency"] = entities_df["source_ids"].apply(len)
         logger.info(f"✅ Resolution complete. Entities reduced to {len(entities_df)} unique nodes.")
 
         # 3. RELATIONSHIPS RE-MAPPING
@@ -139,7 +139,7 @@ class GraphService:
             .agg({
                 "description": list, 
                 "weight": "sum", 
-                "source_id": lambda x: list(set([
+                "source_ids": lambda x: list(set([
                     item for sublist in (x if isinstance(x.iloc[0], list) else [x]) 
                     for item in sublist
                 ])) 

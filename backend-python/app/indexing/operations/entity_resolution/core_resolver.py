@@ -4,7 +4,6 @@ import logging
 from phonetics import dmetaphone
 from Levenshtein import ratio
 from app.indexing.operations.entity_resolution.encyclopedia_manager import EncyclopediaManager
-from app.models.domain import SiraEntityType
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +50,7 @@ class CoreResolver:
             df["canonical_id"] = None
 
         # 1. Phonetic Fingerprinting
-        # Allows matching 'Muhammad' and 'Muhamad' even with spelling variations
+        # Allows matching 'IBN_ABBAS' and 'IBN_ABAS' even with spelling variations
         df["phonetic_key"] = df["title"].apply(lambda x: dmetaphone(str(x))[0] if x else "")#TODO put aswell the second proposition of dmetaphone later
         logger.info(f"🔍 Phonetic fingerprinting completed for {len(df)} entities.")
 
@@ -60,7 +59,7 @@ class CoreResolver:
 
         # 3. Reference Data Anchoring (Encyclopedia)
         for idx, row in resolved_df.iterrows():
-            matches = self.encyclopedia.find_match(row["title"], row["type"])
+            matches = self.encyclopedia.find_match(row["title"], row["category"])
             
             # Case A: Unique Match found - Direct Anchoring
             if len(matches) == 1:
@@ -82,7 +81,8 @@ class CoreResolver:
                         "ID": m["ID"],
                         "CANONICAL_NAME": m["CANONICAL_NAME"],
                         "CORE_SUMMARY": m.get("CORE_SUMMARY", ""),
-                        "TYPE": m["TYPE"] 
+                        "TYPE": m["TYPE"],
+                        "CATEGORY": m["CATEGORY"] 
                     }
                     for m in matches
                 ]
@@ -113,10 +113,13 @@ class CoreResolver:
             for j, candidate in df.iloc[i+1:].iterrows():
                 if j in merged_indices: continue
                 
+                # Internal merge based on sound, text, and pre-calculated category
                 if self._is_mergeable(row, candidate):
                     # Record the redirection for relationship remapping
                     changes[candidate["title"]] = row["title"]
+
                     logger.debug(f"🔗 Merging variant '{candidate['title']}' into pivot '{row['title']}'")
+                    
                     current_cluster.append(candidate)
                     merged_indices.add(j)
 
@@ -126,25 +129,19 @@ class CoreResolver:
 
     def _is_mergeable(self, row: pd.Series, candidate: pd.Series) -> bool:
         """
-        Hybrid comparison logic combining sound and edit distance.
-        
-        Validation layers:
-        1. Structural: Both phonetic keys must match AND Levenshtein ratio > threshold.
-        2. Semantic: Both entities must belong to the same Category (SiraEntityType).
+        Deterministic check:
+        1. Must share the same category (Human, Place, etc.)
+        2. Must share phonetic sound AND string similarity.
         """
-
-        # 1. Forme
-        same_sound = row["phonetic_key"] == candidate["phonetic_key"]#TODO handles the second dmetaphone phonetic proposition
-        sim_ratio = ratio(str(row["title"]), str(candidate["title"]))
-        
-        if not (same_sound and sim_ratio >= self.similarity_threshold):
+        # 1. Semantic Check (Zero overhead now)
+        if row["category"] != candidate["category"]:
             return False
 
-        # 2. Fond (Types)
-        cat_a = SiraEntityType.get_category(row["type"])
-        cat_b = SiraEntityType.get_category(candidate["type"])
-
-        return cat_a == cat_b
+        # 2. Structural Check
+        same_sound = row["phonetic_key"] == candidate["phonetic_key"]
+        sim_ratio = ratio(str(row["title"]), str(candidate["title"]))
+        
+        return same_sound and sim_ratio >= self.similarity_threshold
 
     def _aggregate_cluster(self, cluster_rows: List[pd.Series]) -> Dict:
         """
@@ -156,21 +153,22 @@ class CoreResolver:
        
         main = cluster_rows[0]
         
-        # Aggregate unique source IDs across the cluster
+        # Flattening source_ids lists
         all_sources = []
         for r in cluster_rows:
-            sid = r["source_id"]
-            if isinstance(sid, list): all_sources.extend(sid)
-            else: all_sources.append(sid)
+            all_sources.extend(r["source_ids"])
 
+        unique_sources = list(set(all_sources))
+        
         # Collect unique descriptions for later LLM summarization
-        descriptions = set(filter(None, [str(r["description"]) for r in cluster_rows]))
+        descriptions = set(filter(None, [str(r.get("description", "")) for r in cluster_rows]))
 
-        return {
-            "title": main["title"],
-            "type": main["type"],
-            "description": " | ".join(descriptions),
-            "source_id": list(set(all_sources)),
-            "frequency": sum(r.get("frequency", 1) for r in cluster_rows),
-            "canonical_id": main.get("canonical_id")
+        return { #TODO Use the defined models in core/models/graph insteand of a made-up dict
+        "title": main["title"],
+        "type": main["type"],
+        "category": main.get("category"), 
+        "description": " | ".join(descriptions),
+        "source_ids": unique_sources, 
+        "frequency": len(unique_sources),
+        "canonical_id": main.get("canonical_id"),
         }

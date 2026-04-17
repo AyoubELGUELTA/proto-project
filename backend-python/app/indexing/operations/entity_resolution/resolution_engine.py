@@ -51,46 +51,46 @@ class EntityResolutionEngine:
         logger.info(f"🚀 Starting Entity Resolution Engine on {initial_count} raw entities.")
         tracker = IdentityTracker()
         
-        # --- 1. RESOLUTION (Core + LLM) ---
-        # Collect all redirections suggested by deterministic and semantic algorithms
+        # --- 1. CORE RESOLUTION (Phonetic & Exact) ---
         df, core_mappings = self.core.resolve(df)
         for old, new in core_mappings.items(): 
             tracker.add_mapping(old, new)
         
+        # --- 2. SEMANTIC RESOLUTION (LLM) ---
         try:
-            df, llm_mappings = await self.llm.resolve_complex_cases(df)
+            # Note: llm_resolve now uses 'category' internally thanks to our refactor
+
+            df, llm_mappings = await self.llm.llm_resolve(df)
             for old, new in llm_mappings.items(): 
                 tracker.add_mapping(old, new)
         except Exception as e:
             logger.error(f"❌ LLM Resolution Error: {e}")
 
-        # --- 2. ENCYCLOPEDIA ANCHORING ---
-        # If a canonical_id was found, we inject it as the final hop in the redirection chain.
-        # This ensures that even resolved names point to the official Encyclopedia ID.
-
+        # --- 3. ENCYCLOPEDIA ANCHORING ---
+        # If a canonical_id was found, it becomes the ultimate ground truth
         mask = df["canonical_id"].notna()
         if mask.any():
-            logger.debug(f"⚓ Injecting {mask.sum()} Encyclopedia anchors into tracker.")
             for _, row in df[mask].iterrows():
+                # We map the current title (slug) to the Encyclopedia ID
                 tracker.add_mapping(row["title"], row["canonical_id"])
 
-        # --- 3. FINAL TRANSITIVE RESOLUTION ---
-        # The tracker flattens chains (e.g., 'A' -> 'B' -> 'C' implies 'A' -> 'C')
+        # --- 4. FINAL TRANSITIVE RESOLUTION ---
+        # Flattens chains: A -> B -> C becomes A -> C
         final_map = tracker.resolve()
 
-        # --- 4. PHYSICAL UPDATE & AGGREGATION ---
-        # Update titles in the DataFrame using the flattened mapping
+        # --- 5. PHYSICAL UPDATE ---
+        # We apply the map. Titles might now become Encyclopedia IDs
         df["title"] = df["title"].replace(final_map)
         
-        # Consolidate rows that now share the same title/ID (post-anchoring duplicates)
+        # --- 6. PHYSICAL AGGREGATION ---
+        # Consolidate rows that share the same final identity
         final_df = self._aggregate_entities(df)
 
-        # --- 5. VALIDATION ---
-        # Verify that all mapping targets actually exist in the final nodes list
-        unique_titles = set(final_df["title"])
-        errors = [v for v in final_map.values() if v not in unique_titles]
+        # Integrity check
+        unique_identities = set(final_df["title"])
+        errors = [v for v in final_map.values() if v not in unique_identities]
         if errors:
-            logger.warning(f"⚠️ {len(set(errors))} mapping targets missing from final nodes (Integrity risk).")
+            logger.warning(f"⚠️ {len(set(errors))} mapping targets missing from final nodes.")
 
         logger.info(f"✅ Resolution Complete: {initial_count} -> {len(final_df)} entities.")        
         return final_df, final_map
@@ -110,21 +110,27 @@ class EntityResolutionEngine:
         - frequency: Sum of occurrences.
         - canonical_id: Persistence of the anchored ID.
         """
-        if df.empty:
-            return df
+        def merge_descriptions(series):
+            # Cleanly merge description strings, avoiding empty values
+            return " | ".join(set(filter(None, series.astype(str))))
 
-        # Ensure descriptions are lists to support the 'sum' aggregation (list concatenation)
-        if not isinstance(df.iloc[0]["description"], list):
-            df["description"] = df["description"].apply(lambda d: [d] if isinstance(d, str) else d)
+        def merge_sources(series):
+            # Flatten lists of source_ids and keep unique values
+            combined = []
+            for s_list in series:
+                if isinstance(s_list, list): combined.extend(s_list)
+            return list(set(combined))
 
         agg_rules = {
-            "description": "sum",  # Merges lists of strings: [d1] + [d2] -> [d1, d2]
-            "source_id": "sum",    # Merges provenance IDs
+            "description": merge_descriptions,
+            "source_ids": merge_sources, 
             "frequency": "sum",
+            "category": "first",         # Category is stable for a given title/ID
             "canonical_id": "first"
         }
         
-        # Grouping by both title and type preserves semantic distinctions
+        # We group by 'title' and 'type'. 
+        # Note: If title is an Encyclopedia ID, type is already standardized.
         return df.groupby(["title", "type"], sort=False).agg(agg_rules).reset_index()
     
 

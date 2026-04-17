@@ -3,8 +3,11 @@ import re
 import logging
 from typing import Any, List, Dict, Tuple
 import pandas as pd
-from app.indexing.operations.text.text_utils import normalize_entity_title
+from app.core.models.graph import slugify_entity
+
 logger = logging.getLogger(__name__)
+
+from app.core.models.graph import EntityModel, RelationshipModel
 
 class LLMParser:
     """
@@ -165,41 +168,50 @@ class LLMParser:
         all_entities = []
         all_relationships = []
         
-        # Iterate over each chunk's result set
         for chunk_tuples, s_id in zip(parsed_results, source_ids):
             for t in chunk_tuples:
                 if not t or len(t) < 1: 
                     continue
                 
-                # Determine type (entity vs relationship)
                 tag = t[0].lower()
                 
-                # Case: ENTITY (Expected: type, title, entity_type, description)
+                # --- CASE: ENTITY ---
                 if tag == "entity" and len(t) >= 4:
-                    all_entities.append({
-                        "title": normalize_entity_title(t[1]),
-                        "type": t[2].upper(),
-                        "description": t[3],
-                        "source_id": s_id
-                    })
+                    try:
+                        # Pydantic handles the slugification and normalization automatically
+                        entity = EntityModel(
+                            title=t[1],
+                            type=t[2].upper(),
+                            description=t[3],
+                            source_ids=[s_id],
+                             
+                        )
+                        all_entities.append(entity.model_dump())
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to validate entity tuple {t[1]}: {e}")
                 
-                # Case: RELATIONSHIP (Expected: type, source, target, description, weight)
+                # --- CASE: RELATIONSHIP ---
                 elif tag == "relationship" and len(t) >= 5:
                     try:
-                        w = float(t[4])
-                    except (ValueError, TypeError):
-                        w = 1.0 # Default weight if parsing fails
-                        
-                    all_relationships.append({
-                        "source": normalize_entity_title(t[1]),
-                        "target": normalize_entity_title(t[2]),
-                        "description": t[3],
-                        "weight": w,
-                        "source_id": s_id
-                    })
+                        # RelationshipModel will normalize source/target automatically
+                        rel = RelationshipModel(
+                            source=t[1],
+                            target=t[2],
+                            description=t[3],
+                            weight=float(t[4]) if t[4].replace('.','',1).isdigit() else 1.0,
+                            source_ids=[s_id]
+                        )
+                        all_relationships.append(rel.model_dump())
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to validate relationship {t[1]}->{t[2]}: {e}")
 
-        # DataFrame construction with fallback for empty results
-        ent_df = pd.DataFrame(all_entities) if all_entities else pd.DataFrame(columns=["title", "type", "description", "source_id"])
-        rel_df = pd.DataFrame(all_relationships) if all_relationships else pd.DataFrame(columns=["source", "target", "weight", "description", "source_id"])
+        # Construct DataFrames from validated dictionaries
+        # Note: we use "source_ids" (plural) now to prepare for future merging
+        ent_df = pd.DataFrame(all_entities) if all_entities else pd.DataFrame(
+            columns=["title", "type", "description", "source_ids", "frequency"]
+        )
+        rel_df = pd.DataFrame(all_relationships) if all_relationships else pd.DataFrame(
+            columns=["source", "target", "weight", "description", "source_ids"]
+        )
         
         return ent_df, rel_df

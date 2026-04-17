@@ -70,7 +70,22 @@ class SiraEntityType(str, Enum):
         Retrieves the parent category from a string value (usually from LLM output).
         """
         try:
-            return cls(type_name).category
+            if not type_name:
+                return None
+                
+            name_upper = type_name.strip().upper()
+            
+            # 1. Try to match by Enum Name (e.g., "SAHABI")
+            if name_upper in cls.__members__:
+                return cls[name_upper].category
+
+            # 2. Try to match by Enum Value (e.g., "Sahabi")
+            for member in cls:
+                if member.value.upper() == name_upper:
+                    return member.category
+                    
+            logger.debug(f"⚠️ Unknown entity type: '{type_name}'. No category mapped.")
+            return None
         except ValueError:
             logger.debug(f"⚠️ Unknown entity type: '{type_name}'. No category mapped.")
             return None

@@ -3,7 +3,7 @@ from fastapi import UploadFile
 from typing import Dict, Any
 
 # Services & Repositories
-from app.services.database.postgres_client import PostgresClient #TODO Refactor the emplacement of PostgreClient to infrastructure folder..
+from app.infrastructure.database.postgres_client import PostgresClient
 from app.infrastructure.neo4j.client import Neo4jClient
 from app.services.database.document_repository import DocumentRepository
 from app.services.database.chunk_repository import ChunkRepository

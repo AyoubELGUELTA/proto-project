@@ -87,16 +87,24 @@ class SummarizeManager:
         if not descriptions: 
             return ""
         
+
+        
+        if isinstance(descriptions, str):
+            desc_list = [d.strip() for d in descriptions.split("|") if d.strip()]
+        elif isinstance(descriptions, list): #Fallback
+            desc_list = descriptions
+        else: #Fallback 2
+            desc_list = [str(descriptions)]
+
         # Grounding optimization: If only one description exists, no synthesis needed
-        if len(descriptions) == 1 and isinstance(descriptions[0], str): 
-            logger.debug(f"Skipping summary for '{identifier}': it has a single description.")
-            return descriptions[0]
+        unique_descriptions = sorted(set(filter(None, desc_list)))
+        
+        if len(unique_descriptions) <= 1:
+            return unique_descriptions[0] if unique_descriptions else ""
         
         async with self.semaphore:
             logger.info(f"🤖 Summarizing '{identifier}' ({len(descriptions)} fragments)...")
 
-            # deduplicate and sort to ensure deterministic input
-            unique_descriptions = sorted(set(filter(None, descriptions)))
             
             # Selection of the prompt according to the nature of the object
             system_p = (ENTITY_SUMMARIZE_SYSTEM_PROMPT if is_entity 
