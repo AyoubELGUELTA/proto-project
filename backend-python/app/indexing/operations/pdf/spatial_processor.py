@@ -1,6 +1,6 @@
 import re
 from typing import List, Dict, Any
-from app.models.domain import TextUnit
+from app.core.data_model.text_units import TextUnit
 
 import logging
 logger = logging.getLogger(__name__)

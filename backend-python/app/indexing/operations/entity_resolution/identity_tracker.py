@@ -17,30 +17,29 @@ class IdentityTracker:
         """Initializes an empty mapping dictionary."""
         self._mapping: Dict[str, str] = {}
 
-    def add_mapping(self, old_name: Any, new_name: Any):
+    def add_mapping(self, old_id: Any, new_id: Any):
         """
-        Registers a redirection from an old name to a new identity.
+        Registers a redirection from an old id to a new id.
         
         To prevent lookup failures due to inconsistent casing from the LLM, 
-        this method stores the mapping in three forms: original, UPPER, and lower.
+        this method stores the mapping in two forms: original, UPPER, and lower.
         
         Args:
-            old_name: The source name or ID to be redirected.
-            new_name: The target name or ID (the 'canonical' version).
+            old_id: The source ID to be redirected.
+            new_id: The target ID (the 'canonical' version).
         """
         # Clean and normalize inputs to ensure string consistency
-        old_s = str(old_name).strip()
-        new_s = str(new_name).strip()
+        old_s = str(old_id).strip()
+        new_s = str(new_id).strip()
 
         # Safety check: avoid empty strings or self-referential loops
         if not old_s or not new_s or old_s == new_s:
             return
         
         logger.debug(f"Registering alias: '{old_s}' -> '{new_s}'")
+        
+        self._mapping[old_id] = new_id
 
-        # Double-mapping safeguard for case-insensitive lookup
-        self._mapping[old_s] = new_s
-        self._mapping[old_s.upper()] = new_s
 
     def resolve(self) -> dict:
         """
@@ -68,10 +67,6 @@ class IdentityTracker:
                 
             # 2. We register each key
             final_map[key] = current
-            
-            # Log optionnel pour le debug
-            if current != self._mapping[key]:
-                logger.debug(f"Transitive hit: '{key}' resolved to '{current}'")
 
         logger.info(f"✅ Identity resolution complete. {len(final_map)} identities stabilized.")
         return final_map

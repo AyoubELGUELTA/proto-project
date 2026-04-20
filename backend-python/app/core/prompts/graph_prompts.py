@@ -23,7 +23,7 @@ The following metadata provides the global context of the document this text bel
 -Steps-
 1. Identify all entities. For each identified entity, extract:
 
-- entity_name: Name of the entity, capitalized. 
+- entity_name: Name of the entity. 
   *STRICT RULE*: Use English names or English phonetic transliteration only.
 - entity_type: One of the following types: [{entity_types}]
 - entity_description: 
@@ -66,19 +66,19 @@ After the Hijra to Madinah, the Prophet Muhammad ﷺ organized the defense of th
 
 ######################
 Output:
-("entity"<|>MUHAMMAD<|>Prophet<|>Organized the defense of the community in Madinah after the Hijra)
+("entity"<|>Muhammad ﷺ<|>Prophet<|>Organized the defense of the community in Madinah after the Hijra)
 ##
-("entity"<|>MADINAH<|>City<|>Location where the community was defended after the Hijra)
+("entity"<|>Madinah<|>City<|>Location where the community was defended after the Hijra)
 ##
-("entity"<|>BATTLE OF BADR<|>Battle<|>Military conflict that occurred in the second year of Hijra)
+("entity"<|>Battle of Badr<|>Battle<|>Military conflict that occurred in the second year of Hijra)
 ##
-("entity"<|>HAMZA IBN ABD AL-MUTTALIB<|>Sahabi<|>Participant in the Battle of Badr noted for bravery)
+("entity"<|>Hamza ibn Abd al-Muttalib<|>Sahabi<|>Participant in the Battle of Badr noted for bravery)
 ##
-("relationship"<|>MUHAMMAD<|>MADINAH<|>Muhammad organized the community defense in Madinah<|>10)
+("relationship"<|>Muhammad ﷺ<|>Madinah<|>Muhammad organized the community defense in Madinah<|>10)
 ##
-("relationship"<|>HAMZA IBN ABD AL-MUTTALIB<|>BATTLE OF BADR<|>Hamza was a combatant during the Battle of Badr<|>9)
+("relationship"<|>Hamza ibn Abd al-Muttalib<|>Battle of Badr<|>Hamza was a combatant during the Battle of Badr<|>9)
 ##
-("relationship"<|>MUHAMMAD<|>BATTLE OF BADR<|>The Battle of Badr occurred under the Prophet's leadership of the community<|>8)
+("relationship"<|>Muhammad ﷺ<|>Battle of Badr<|>The Battle of Badr occurred under the Prophet's leadership of the community<|>8)
 <|COMPLETE|>
 
 Example 2:
@@ -90,32 +90,33 @@ Maymuna bint al-Harith était la dernière épouse du Prophète. Le mariage a eu
 
 ######################
 Output:
-("entity"<|>MAYMUNA BINT AL HARITH<|>MotherBeliever<|>The last wife of the Prophet)
+("entity"<|>Maymuna bint al-Harith<|>MotherBeliever<|>The last wife of the Prophet)
 ##
-("entity"<|>MUHAMMAD<|>Prophet<|>The Prophet and husband of Maymuna bint al-Harith)
+("entity"<|>Muhammad<|>Prophet<|>The Prophet and husband of Maymuna bint al-Harith)
 ##
-("entity"<|>SARIF<|>Location<|>Place near Mecca where the marriage occurred)
+("entity"<|>Sarif<|>Location<|>Place near Mecca where the marriage occurred)
 ##
-("entity"<|>MECCA<|>City<|>City that the Muslims left before the marriage at Sarif)
+("entity"<|>Mecca<|>City<|>City that the Muslims left before the marriage at Sarif)
 ##
-("entity"<|>AL 'ABBAS<|>Sahabi<|>Uncle of Maymuna who acted as her guardian for the marriage)
+("entity"<|>Al-'Abbas<|>Sahabi<|>Uncle of Maymuna who acted as her guardian for the marriage)
 ##
-("entity"<|>ALLAH<|>God<|>Source of blessing for the union between Maymuna and the Prophet)
+("entity"<|>Allah<|>God<|>Source of blessing for the union between Maymuna and the Prophet)
 ##
-("entity"<|>QURAN<|>SacredText<|>Text containing references to the piety of the Prophet's wives)
+("entity"<|>Quran<|>SacredText<|>Text containing references to the piety of the Prophet's wives)
 ##
-("relationship"<|>MUHAMMAD<|>MAYMUNA BINT AL HARITH<|>Muhammad married Maymuna bint al-Harith as his last wife<|>10)
+("relationship"<|>Muhammad<|>Maymuna bint al-Harith<|>Muhammad married Maymuna bint al-Harith as his last wife<|>10)
 ##
-("relationship"<|>AL 'ABBAS<|>MAYMUNA BINT AL HARITH<|>Al-'Abbas acted as guardian for Maymuna during the marriage union<|>9)
+("relationship"<|>Al-'Abbas<|>Maymuna bint al-Harith<|>Al-'Abbas acted as guardian for Maymuna during the marriage union<|>9)
 ##
-("relationship"<|>MAYMUNA BINT AL HARITH<|>SARIF<|>The marriage took place in the location of Sarif<|>9)
+("relationship"<|>Maymuna bint al-Harith<|>Sarif<|>The marriage took place in the location of Sarif<|>9)
 ##
-("relationship"<|>MAYMUNA BINT AL HARITH<|>MECCA<|>Maymuna married near Mecca after the Muslims departed the city<|>8)
+("relationship"<|>Maymuna bint al-Harith<|>Mecca<|>Maymuna married near Mecca after the Muslims departed the city<|>8)
 ##
-("relationship"<|>ALLAH<|>MAYMUNA BINT AL HARITH<|>The union of Maymuna was blessed by Allah<|>7)
+("relationship"<|>Allah<|>Maymuna bint al-Harith<|>The union of Maymuna was blessed by Allah<|>7)
 ##
-("relationship"<|>QURAN<|>MAYMUNA BINT AL HARITH<|>The Quran refers to the piety of wives including Maymuna<|>6)
+("relationship"<|>Quran<|>Maymuna bint al-Harith<|>The Quran refers to the piety of wives including Maymuna<|>6)
 <|COMPLETE|>
+
 
 ######################
 """
@@ -193,6 +194,7 @@ Your task is to identify if a list of entities are duplicates.
 
 ### Output Rules:
 - Format: (MERGE <|> "Original Name" <|> "Target Canonical Name")
+- Return ONLY the exact title of the entities as provided in the list.
 - If no duplicates, output: <|NO_MERGE|>
 """
 
@@ -215,12 +217,12 @@ You will be provided with:
 
 Decision Rules:
 - Analyze the context to determine which candidate is the exact match.
-- If a candidate matches perfectly, return its ID.
+- If a candidate matches perfectly, return the SLUG (AN_EXEMPLE).
 - If NONE of the candidates match the context of the text (e.g., it is a different person sharing the same name), you MUST return "NEW_ENTITY".
 
 You must return ONLY a valid JSON object in this format:
 {
-  "choice": "CANDIDATE_ID_OR_NEW_ENTITY"
+  "choice": "CANDIDATE_SLUG_OR_NEW_ENTITY"
 }
 
 Example:
@@ -229,14 +231,14 @@ Extracted Entity: Umar (Type: Person)
 Context: He was a young boy who lived in the house of the Prophet after his father died, and the Prophet taught him how to eat from the dish.
 
 Encyclopedia Candidates:
-- ID: UMAR_IBN_KHATTAB | Name: Umar ibn al-Khattab | Summary: The second Caliph of Islam.
-- ID: UMAR_IBN_ABI_SALAMA | Name: Umar ibn Abi Salama | Summary: The stepson of the Prophet who lived in his household.
+- SLUG: UMAR_IBN_KHATTAB | Name: Umar ibn al-Khattab | Summary: The second Caliph of Islam. | Properties 
+- SLUG: UMAR_IBN_ABI_SALAMA | Name: Umar ibn Abi Salama | Summary: The stepson of the Prophet who lived in his household. | Properties
 
 Assistant:
 {
   "choice": "UMAR_IBN_ABI_SALAMA"
 }
-"""
+""" # TODO TODO TODO TODO TODO TODO TODO ADD PROPERTIES EXEMPLES IN THE PROMPT ABOVE
 
 ANCHORING_RESOLUTION_USER_PROMPT = """Extracted Entity: {entity_title} (Type: {entity_type})
 Context: {entity_context}

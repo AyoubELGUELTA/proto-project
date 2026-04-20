@@ -1,10 +1,10 @@
 import pytest
 import os
-from app.services.database.postgres_client import PostgresClient
+from app.infrastructure.database.postgres_client import PostgresClient
 from app.services.database.document_repository import DocumentRepository
 from app.services.database.chunk_repository import ChunkRepository
 from app.services.database.schema import CREATE_SCHEMA_QUERY
-from app.models.domain import TextUnit
+from app.core.data_model.text_units import TextUnit
 
 @pytest.mark.asyncio
 async def test_postgres_full_cycle():

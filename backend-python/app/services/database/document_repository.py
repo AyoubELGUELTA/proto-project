@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
-from .postgres_client import PostgresClient
+from app.infrastructure.database.postgres_client import PostgresClient
 
 logger = logging.getLogger(__name__)
 

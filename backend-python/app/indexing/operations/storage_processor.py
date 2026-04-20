@@ -1,6 +1,5 @@
-# app/indexing/operations/storage_processor.py
 from typing import List
-from app.models.domain import TextUnit
+from app.core.data_model.text_units import TextUnit
 from PIL import Image
 from app.services.storage.base import BaseStorage
 

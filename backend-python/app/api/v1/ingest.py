@@ -7,11 +7,13 @@ from app.infrastructure.database.postgres_client import PostgresClient
 from app.infrastructure.neo4j.client import Neo4jClient
 from app.services.database.document_repository import DocumentRepository
 from app.services.database.chunk_repository import ChunkRepository
+from app.services.database.encyclopedia_repository import EncyclopediaRepository
 from app.services.database.ingestion_context import IngestionContext
 from app.services.storage.file_service import FileService
 from app.services.llm.factory import LLMFactory
 from app.services.llm.parser import LLMParser
 from app.services.graph.graph_service import GraphService
+from app.services.startup_service import StartupService
 
 # Resolution Engine & Operations
 from app.indexing.operations.text.identity_service import IdentityService
@@ -24,7 +26,7 @@ from app.indexing.operations.entity_resolution.encyclopedia_manager import Encyc
 from app.indexing.operations.entity_resolution.llm_resolver import LLMResolver
 from app.indexing.operations.entity_resolution.resolution_engine import EntityResolutionEngine
 
-from app.models.domain import TextUnit
+from app.core.data_model.text_units import TextUnit
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,7 @@ async def ingest_single_file(file: UploadFile) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: A summary of the ingestion results, including graph stats and cost report.
     """
+    
     logger.info(f"📥 Starting ingestion pipeline for: {file.filename}")
     
     # 1. Initialize Infrastructure
@@ -63,14 +66,17 @@ async def ingest_single_file(file: UploadFile) -> Dict[str, Any]:
     llm_heavy = LLMFactory.get_heavy_extractor() 
 
     file_service = FileService()
+
     doc_repo = DocumentRepository(db)
     chunk_repo = ChunkRepository(db)
+    encyclopedia_repo = EncyclopediaRepository(db)
+
     parser = LLMParser()
     
     store_manager = GraphStoreManager(neo4j_client)
 
     # ASSEMBLE RESOLUTION ENGINE
-    core_res = CoreResolver(encyclopedia=EncyclopediaManager())
+    core_res = CoreResolver(encyclopedia=EncyclopediaManager(encyclopedia_repo))
     llm_res = LLMResolver(llm_light)
     res_engine = EntityResolutionEngine(core_resolver=core_res, llm_resolver=llm_res)
 

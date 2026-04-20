@@ -1,7 +1,7 @@
 import re
 import logging
 from typing import List, Optional
-from app.models.domain import TextUnit
+from app.core.data_model.text_units import TextUnit
 
 logger = logging.getLogger(__name__)
 

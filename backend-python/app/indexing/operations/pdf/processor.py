@@ -2,7 +2,7 @@ import io
 import base64
 import hashlib
 import logging
-from app.models.domain import TextUnit
+from app.core.data_model.text_units import TextUnit
 from docling_core.types.doc import TableItem, PictureItem
 
 logger = logging.getLogger(__name__)

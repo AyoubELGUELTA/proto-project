@@ -1,7 +1,7 @@
 from typing import List
 from transformers import AutoTokenizer
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from app.models.domain import TextUnit
+from app.core.data_model.text_units import TextUnit
 
 import logging
 logger = logging.getLogger(__name__)

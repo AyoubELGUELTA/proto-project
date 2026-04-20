@@ -16,6 +16,7 @@ class SummarizationConfig(BaseModel):
 
 class EntityResolvingConfig(BaseModel):
     max_cluster_batch: int = 22
+    levenshtein_score_merge_trigger: float = 0.85
 
 
 extraction_config = ExtractionConfig()
@@ -34,3 +35,4 @@ ENTITY_BATCH_SIZE = summarization_config.entity_batch_size
 
 # Entity Resolving
 MAX_CLUSTER_BATCH = entity_resolving_config.max_cluster_batch
+LEVENSHTEIN_SCORE_MERGE_TRIGGER = entity_resolving_config.levenshtein_score_merge_trigger

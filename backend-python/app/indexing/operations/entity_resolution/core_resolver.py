@@ -1,8 +1,13 @@
 import pandas as pd
-from typing import List, Dict, Tuple
 import logging
+from typing import List, Dict, Tuple, Optional, Any
 from phonetics import dmetaphone
 from Levenshtein import ratio
+
+from app.core.config.graph_config import LEVENSHTEIN_SCORE_MERGE_TRIGGER
+
+from app.core.data_model.entity import EntityModel
+from app.core.data_model.encyclopedia import EncyclopediaEntry
 from app.indexing.operations.entity_resolution.encyclopedia_manager import EncyclopediaManager
 
 logger = logging.getLogger(__name__)
@@ -11,23 +16,22 @@ class CoreResolver:
     """
     Handles deterministic entity resolution through phonetic and string similarity algorithms.
     
-    The CoreResolver reduces entity duplication before LLM intervention by:
-    1. Grouping lexical variants (phonetic + Levenshtein distance).
-    2. Anchoring clusters to the Encyclopedia (Canonical Source).
-    3. Aggregating metadata (sources, descriptions, frequencies) for merged entities.
+    This resolver acts as a first-pass filter to merge lexical variants and anchor 
+    extracted entities to the official Encyclopedia before any LLM-based resolution.
     """
-    def __init__(self, encyclopedia: EncyclopediaManager, similarity_threshold: float = 0.85):
+   
+    def __init__(self, encyclopedia: EncyclopediaManager, similarity_threshold: float = LEVENSHTEIN_SCORE_MERGE_TRIGGER):
         """
-        Initializes the resolver with a reference encyclopedia.
+        Initializes the resolver.
         
         Args:
-            encyclopedia: Master reference for canonical entity validation.
+            encyclopedia: The manager for canonical reference data (SQL-backed).
             similarity_threshold: Levenshtein ratio (0.0 to 1.0) required to trigger a merge.
         """
         self.encyclopedia = encyclopedia
         self.similarity_threshold = similarity_threshold
 
-    def resolve(self, entities_df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, str]]:
+    async def resolve(self, entities: List[EntityModel]) -> Tuple[List[EntityModel], Dict[str, str]]:        
         """
         Executes the three-stage deterministic resolution pipeline.
         
@@ -40,56 +44,66 @@ class CoreResolver:
             - resolved_df: Cleaned DataFrame with merged rows and canonical_ids.
             - local_changes: A mapping dictionary {old_name: new_canonical_name_or_id}.
         """
-        if entities_df.empty:
-            return entities_df, {}
+        if not entities:
+            return [], {}
         
         local_changes = {}
-        df = entities_df.copy()
         
-        if "canonical_id" not in df.columns:
-            df["canonical_id"] = None
-
-        # 1. Phonetic Fingerprinting
-        # Allows matching 'IBN_ABBAS' and 'IBN_ABAS' even with spelling variations
-        df["phonetic_key"] = df["title"].apply(lambda x: dmetaphone(str(x))[0] if x else "")#TODO put aswell the second proposition of dmetaphone later
+        # 1. Prepare Data via DataFrame for efficient clustering
+        # We convert our Pydantic models to a DF for algorithmic processing
+        df = pd.DataFrame([e.model_dump() for e in entities])
+        
+        # Phonetic Fingerprinting
+        df["phonetic_key"] = df["title"].apply(lambda x: dmetaphone(str(x))[0] if x else "")
         logger.info(f"🔍 Phonetic fingerprinting completed for {len(df)} entities.")
 
         # 2. Iterative Algorithmic Merging
-        resolved_df = self._algoritmic_merging(df, local_changes)
+        merged_df = self._algorithmic_merging(df, local_changes)
 
-        # 3. Reference Data Anchoring (Encyclopedia)
-        for idx, row in resolved_df.iterrows():
-            matches = self.encyclopedia.find_match(row["title"], row["category"])
+        # 3. Encyclopedia Anchoring
+        final_entities = []
+        for _, row in merged_df.iterrows():
+            # Conversion robuste : on s'assure que les listes sont des listes vides si None
+            data = row.to_dict()
+
+            # Cleanup NaN values to None, issued from the conversion
+            data = {k: (v if pd.notna(v) else None) for k, v in data.items()}
             
-            # Case A: Unique Match found - Direct Anchoring
+            entity = EntityModel(**data)
+            
+            # Lookup in SQL Encyclopedia
+            matches: List[EncyclopediaEntry] = await self.encyclopedia.find_match(
+                entity.title, 
+                entity.category
+            )
+            
             if len(matches) == 1:
-                old_title = row["title"]
-                new_title = matches[0]["CANONICAL_NAME"]
-                new_id = matches[0]["ID"]
+                # Case A: Unique Match found (CORE_VALIDATED)
 
-                logger.info(f"✅ Encyclopedia Match: '{old_title}' anchored to ID {new_id}")
+                canonical = matches[0]
 
-                local_changes[old_title] = new_id
-                resolved_df.at[idx, "canonical_id"] = new_id
-                resolved_df.at[idx, "title"] = new_title
-            
-            # Case B: Ambiguous Matches - Flagging for LLM intervention
+                logger.info(f"✅ Encyclopedia Match: '{entity.title}' anchored to {canonical.id}")
+                
+                local_changes[entity.id] = canonical.id
+                entity.canonical_id = canonical.id
+                entity.review_status = "CORE_VALIDATED"
+                
             elif len(matches) > 1:
-                logger.warning(f"⚠️ Ambiguity: '{row['title']}' has {len(matches)} candidates. Flagged for LLM.")
-                resolved_df.at[idx, "anchoring_candidates"] = [
-                    {
-                        "ID": m["ID"],
-                        "CANONICAL_NAME": m["CANONICAL_NAME"],
-                        "CORE_SUMMARY": m.get("CORE_SUMMARY", ""),
-                        "TYPE": m["TYPE"],
-                        "CATEGORY": m["CATEGORY"] 
-                    }
-                    for m in matches
-                ]
+                # Case B: Ambiguity - Flag for LLM intervention (PENDING)
+                logger.warning(f"⚠️ Ambiguity: '{entity.title}' has {len(matches)} candidates.")
+                # Important : on utilise le model_dump() pour que ce soit JSON-serializable
+                entity.attributes["anchoring_candidates"] = [m.model_dump() for m in matches]
+                entity.review_status = "PENDING" 
+            
+            else:
+                # Case C: No match found
+                entity.review_status = "NOT_KNOWN"
 
-        return resolved_df, local_changes
+            final_entities.append(entity)
 
-    def _algoritmic_merging(self, df: pd.DataFrame, changes: dict) -> pd.DataFrame:
+        return final_entities, local_changes
+
+    def _algorithmic_merging(self, df: pd.DataFrame, changes: Dict[str, str]) -> pd.DataFrame:
         """
         Clusters entities based on frequency-first priority.
         
@@ -98,7 +112,6 @@ class CoreResolver:
         """
 
         # Frequency-based sorting to ensure the dominant name survives as the cluster head        
-        df['frequency'] = df.groupby('title')['title'].transform('count')
         df = df.sort_values("frequency", ascending=False).reset_index(drop=True)
         
         merged_indices = set()
@@ -107,24 +120,20 @@ class CoreResolver:
         for i, row in df.iterrows():
             if i in merged_indices: continue
 
-            current_cluster = [row]
+            cluster = [row]
             merged_indices.add(i)
 
             for j, candidate in df.iloc[i+1:].iterrows():
                 if j in merged_indices: continue
                 
-                # Internal merge based on sound, text, and pre-calculated category
                 if self._is_mergeable(row, candidate):
-                    # Record the redirection for relationship remapping
-                    changes[candidate["title"]] = row["title"]
-
+                    changes[candidate["id"]] = row["id"]
                     logger.debug(f"🔗 Merging variant '{candidate['title']}' into pivot '{row['title']}'")
-                    
-                    current_cluster.append(candidate)
+                    cluster.append(candidate)
                     merged_indices.add(j)
 
-            final_rows.append(self._aggregate_cluster(current_cluster))
-        logger.info(f"📉 Algorithmic merging reduced DF from {len(df)} to {len(final_rows)} entities.")
+            final_rows.append(self._aggregate_cluster(cluster))
+            
         return pd.DataFrame(final_rows)
 
     def _is_mergeable(self, row: pd.Series, candidate: pd.Series) -> bool:
@@ -139,7 +148,7 @@ class CoreResolver:
 
         # 2. Structural Check
         same_sound = row["phonetic_key"] == candidate["phonetic_key"]
-        sim_ratio = ratio(str(row["title"]), str(candidate["title"]))
+        sim_ratio = ratio(str(row["slug"]), str(candidate["slug"]))
         
         return same_sound and sim_ratio >= self.similarity_threshold
 
@@ -150,25 +159,45 @@ class CoreResolver:
         Merges source tracking IDs and joins descriptions with a pipe delimiter ("|") 
         to preserve context for the subsequent Summarization phase.
         """
-       
-        main = cluster_rows[0]
+               
+        main = cluster_rows[0]        
         
-        # Flattening source_ids lists
+        # 1. Traceability: Union of source_ids (deduplicated)
         all_sources = []
         for r in cluster_rows:
-            all_sources.extend(r["source_ids"])
-
+            all_sources.extend(r.get("source_ids", []))
         unique_sources = list(set(all_sources))
         
-        # Collect unique descriptions for later LLM summarization
-        descriptions = set(filter(None, [str(r.get("description", "")) for r in cluster_rows]))
+        # 2. Importance: Sum of frequencies and Max rank
+        # If 'A' appears 3 times and 'A'' 2 times, the total is 5.
+        total_frequency = sum(r.get("frequency", 1) for r in cluster_rows)
 
-        return { #TODO Use the defined models in core/models/graph insteand of a made-up dict
-        "title": main["title"],
-        "type": main["type"],
-        "category": main.get("category"), 
-        "description": " | ".join(descriptions),
-        "source_ids": unique_sources, 
-        "frequency": len(unique_sources),
-        "canonical_id": main.get("canonical_id"),
+        # Keep the highest rank in the cluster to maintain entity significance
+        max_rank = max(r.get("rank", 1) for r in cluster_rows)
+        
+        # 3. Context: Merge descriptions
+        descriptions = set(filter(None, [str(r.get("description", "")) for r in cluster_rows]))
+        
+        # 4. Attributes & Communities: Merge dictionaries and lists
+        merged_attributes = {}
+        merged_communities = set()
+        for r in cluster_rows:
+            merged_attributes.update(r.get("attributes", {}))
+            merged_communities.update(r.get("community_ids", []))
+
+        # The returned dictionary must match the EntityModel fields
+        return {
+            "id": main["id"],
+            "title": main["title"], # Will be re-normalized by the EntityModel validator
+            "slug": main.get("slug"), 
+            "type": main["type"],
+            "category": main.get("category"), # Will be re-calculated by the model_validator if None
+            "description": " | ".join(descriptions),
+            "frequency": total_frequency,
+            "source_ids": unique_sources,
+            "rank": max_rank,
+            "community_ids": list(merged_communities),
+            "attributes": merged_attributes,
+            "canonical_id": None,
+            "review_status": "NOT_KNOWN"
         }

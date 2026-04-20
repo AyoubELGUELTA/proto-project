@@ -1,5 +1,5 @@
 import pytest
-from app.models.domain import TextUnit
+from app.core.data_model.text_units import TextUnit
 from app.indexing.operations.text.metadata_refiner import MetadataRefiner
 from app.indexing.operations.text.text_splitter import TextSplitter
 

@@ -1,12 +1,12 @@
 from app.indexing.operations.entity_resolution.identity_tracker import IdentityTracker
 from app.indexing.operations.entity_resolution.llm_resolver import LLMResolver
 from app.indexing.operations.entity_resolution.core_resolver import CoreResolver
+from app.core.data_model.entity import EntityModel
 
-from typing import Tuple
-
+from typing import Tuple, List, Dict
 import pandas as pd
-
 import logging
+
 logger = logging.getLogger(__name__)
 
 class EntityResolutionEngine:
@@ -30,7 +30,7 @@ class EntityResolutionEngine:
         self.core = core_resolver
         self.llm = llm_resolver
 
-    async def run(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, dict]:
+    async def run(self, entities: List[EntityModel]) -> Tuple[List[EntityModel], Dict[str, str]]:
         """
         Executes the full entity resolution pipeline on an extraction batch.
         
@@ -38,80 +38,74 @@ class EntityResolutionEngine:
         duplicates using deterministic rules first to minimize expensive LLM calls.
         
         Args:
-            df: The raw extracted entities DataFrame.
+            entities: The list of raw extracted EntityModel objects.
             
         Returns:
-            - final_df: A deduplicated DataFrame where each row is a unique entity.
+            - final_entities: A deduplicated list of EntityModel where each entry is unique.
             - final_map: The complete identity mapping used for relationship remapping.
         """
-        if df.empty:
-            return df, {}
+        if not entities:
+            return [], {}
 
-        initial_count = len(df)
+        initial_count = len(entities)
         logger.info(f"🚀 Starting Entity Resolution Engine on {initial_count} raw entities.")
         tracker = IdentityTracker()
         
         # --- 1. CORE RESOLUTION (Phonetic & Exact) ---
-        df, core_mappings = self.core.resolve(df)
-        for old, new in core_mappings.items(): 
-            tracker.add_mapping(old, new)
+        # We process the models through the deterministic layer
+        entities, core_mappings = await self.core.resolve(entities)
+        for old_id, new_id in core_mappings.items(): 
+            tracker.add_mapping(old_id, new_id)
         
         # --- 2. SEMANTIC RESOLUTION (LLM) ---
         try:
-            # Note: llm_resolve now uses 'category' internally thanks to our refactor
-
-            df, llm_mappings = await self.llm.llm_resolve(df)
-            for old, new in llm_mappings.items(): 
-                tracker.add_mapping(old, new)
+            # The LLM layer settles remaining ambiguities and clusters orphans
+            entities, llm_mappings = await self.llm.llm_resolve(entities)
+            for old_id, new_id in llm_mappings.items(): 
+                tracker.add_mapping(old_id, new_id)
         except Exception as e:
             logger.error(f"❌ LLM Resolution Error: {e}")
 
         # --- 3. ENCYCLOPEDIA ANCHORING ---
-        # If a canonical_id was found, it becomes the ultimate ground truth
-        mask = df["canonical_id"].notna()
-        if mask.any():
-            for _, row in df[mask].iterrows():
-                # We map the current title (slug) to the Encyclopedia ID
-                tracker.add_mapping(row["title"], row["canonical_id"])
+        # If a canonical_id was found during any phase, it becomes the ultimate ground truth
+        for entity in entities:
+            if entity.canonical_id:
+                # We map the current title (or any previous version) to the Encyclopedia ID
+                tracker.add_mapping(entity.id, entity.canonical_id)
 
         # --- 4. FINAL TRANSITIVE RESOLUTION ---
         # Flattens chains: A -> B -> C becomes A -> C
         final_map = tracker.resolve()
 
         # --- 5. PHYSICAL UPDATE ---
-        # We apply the map. Titles might now become Encyclopedia IDs
-        df["title"] = df["title"].replace(final_map)
+        # We update titles based on the final mapping. Titles might now become Encyclopedia IDs.
+        for entity in entities:
+            if entity.id in final_map:
+                entity.id = final_map[entity.id]
         
         # --- 6. PHYSICAL AGGREGATION ---
-        # Consolidate rows that share the same final identity
-        final_df = self._aggregate_entities(df)
+        # Consolidate objects that now share the same title/identity
+        # We convert to DataFrame temporarily for high-performance grouping
+        final_entities = self._aggregate_entities(entities)
 
-        # Integrity check
-        unique_identities = set(final_df["title"])
-        errors = [v for v in final_map.values() if v not in unique_identities]
-        if errors:
-            logger.warning(f"⚠️ {len(set(errors))} mapping targets missing from final nodes.")
+        logger.info(f"✅ Resolution Complete: {initial_count} -> {len(final_entities)} entities.")        
+        return final_entities, final_map
+    
+    def _aggregate_entities(self, entities: List[EntityModel]) -> List[EntityModel]:
+        """
+        Physically merges duplicate EntityModel objects into unified records.
+        
+        This method performs a GroupBy operation using Pandas to handle the 
+        complex logic of merging source lists and descriptions efficiently.
+        """
+        if not entities:
+            return []
 
-        logger.info(f"✅ Resolution Complete: {initial_count} -> {len(final_df)} entities.")        
-        return final_df, final_map
-    
-    
-    def _aggregate_entities(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Physically merges duplicate rows into unified entity records.
-        
-        This method performs a GroupBy operation on ['title', 'type']. 
-        The 'type' is included to prevent accidental merging of homonyms 
-        of different natures (e.g., a Person and a Location with the same name).
-        
-        Aggregation Rules:
-        - description: List concatenation (prepared for the SummarizeManager).
-        - source_id: Unique list union to track provenance.
-        - frequency: Sum of occurrences.
-        - canonical_id: Persistence of the anchored ID.
-        """
+        # Convert models to DataFrame for aggregation
+        df = pd.DataFrame([e.model_dump() for e in entities])
+
         def merge_descriptions(series):
-            # Cleanly merge description strings, avoiding empty values
+            # Cleanly merge description strings, avoiding empty values and duplicates
             return " | ".join(set(filter(None, series.astype(str))))
 
         def merge_sources(series):
@@ -121,31 +115,40 @@ class EntityResolutionEngine:
                 if isinstance(s_list, list): combined.extend(s_list)
             return list(set(combined))
 
+        def merge_attributes(series):
+            # Merge dictionary attributes (last one wins for overlapping keys)
+            final_attr = {}
+            for attr_dict in series:
+                if isinstance(attr_dict, dict):
+                    final_attr.update(attr_dict)
+            return final_attr
+
+        def merge_communities(series):
+            # Union of community ID lists
+            combined = set()
+            for c_list in series:
+                if isinstance(c_list, list): combined.update(c_list)
+            return list(combined)
+
         agg_rules = {
+            "title": "first",
             "description": merge_descriptions,
             "source_ids": merge_sources, 
             "frequency": "sum",
-            "category": "first",         # Category is stable for a given title/ID
-            "canonical_id": "first"
+            "rank": "max",
+            "category": "first",
+            "canonical_id": "first",
+            "review_status": "first",
+            "attributes": merge_attributes,
+            "community_ids": merge_communities
         }
         
-        # We group by 'title' and 'type'. 
-        # Note: If title is an Encyclopedia ID, type is already standardized.
-        return df.groupby(["title", "type"], sort=False).agg(agg_rules).reset_index()
-    
+        # Group by 'id', it ensure unicity
+        grouped = df.groupby(["id"], sort=False).agg(agg_rules).reset_index()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        # Convert back to EntityModel objects
+        # pd.notna(v) check is used to ensure NaN becomes None for Pydantic
+        return [
+            EntityModel(**{k: (v if pd.notna(v) else None) for k, v in row.items()}) 
+            for _, row in grouped.iterrows()
+        ]
