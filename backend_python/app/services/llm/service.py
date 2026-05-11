@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.services.llm.client import LLMClient
@@ -56,7 +56,7 @@ class LLMService:
             logger.debug(f"Raw problematic output: {raw_text[:200]}...")
             return []
 
-    async def ask_json(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+    async def ask_json(self, system_prompt: str, user_prompt: str) -> Union[Dict[str, Any], List]:
         """
         Queries the LLM for a strictly formatted JSON response.
 
@@ -65,8 +65,9 @@ class LLMService:
             user_prompt (str): The context or question to be processed.
 
         Returns:
-            Dict[str, Any]: The parsed JSON data as a Python dictionary.
-                            Returns an empty dictionary {} if parsing fails.
+            Union:
+                - Dict[str, Any]
+                - List
         """
         messages = [
             SystemMessage(content=system_prompt),

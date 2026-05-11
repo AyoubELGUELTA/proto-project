@@ -13,7 +13,9 @@ from app.core.prompts.graph_prompts import (
     ENTITY_RESOLUTION_SYSTEM_PROMPT, 
     ENTITY_RESOLUTION_USER_PROMPT,
     ANCHORING_RESOLUTION_SYSTEM_PROMPT,
-    ANCHORING_RESOLUTION_USER_PROMPT
+    ANCHORING_RESOLUTION_USER_PROMPT,
+    CONSULTANT_RESOLUTION_SYSTEM_PROMPT,
+    CONSULTANT_RESOLUTION_USER_PROMPT
 )
 from app.core.config.graph_config import MAX_CLUSTER_BATCH
 from app.indexing.operations.text.text_utils import similarity
@@ -40,60 +42,70 @@ class LLMResolver:
 
     async def llm_resolve(self, entities: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, str]]:
         """
-        Coordinates the high-level workflow for semantic resolution.
-        
-        This method first settles ambiguities with the reference Encyclopedia (Anchoring) 
-        and then attempts to merge remaining unknown entities through hybrid clustering.
+        Coordinates the high-level workflow using a cascade approach:
+        1. Encyclopedia Anchoring (Reference matching).
+        2. Algorithmic Clustering (Structural matching + Singletons).
+        3. LLM Consultant (Semantic bridges between clusters).
+        4. Pyramidal Resolution (Final verdict on merged super-clusters).
+
+        Args:
+            - entities: The Dataframe of entities to resolve.
         
         Returns:
-            - resolved_entities: List of EntityModel with updated canonical_ids.
-            - all_llm_mappings: Dict mapping local titles to their resolved target names/IDs.
+            - resolved_entities : List of EntityModel with updated canonical_ids.
+            - all_llm_mappings : Dict mapping local titles to their resolved target names/IDs.
         """
         all_llm_mappings = {}
-        
         entity_models = [EntityModel(**r) for r in entities.to_dict('records')]
         
         # 1. ENCYCLOPEDIA ANCHORING
-        # Handles cases where the CoreResolver flagged multiple potential matches.
         ambiguous_entities = [e for e in entity_models if e.attributes.get("anchoring_candidates")]
-        
         if ambiguous_entities:
-            logger.info(f"⚓ Resolving anchoring for {len(ambiguous_entities)} ambiguous entities...")
             tasks = [self._resolve_anchoring(e) for e in ambiguous_entities]
             await asyncio.gather(*tasks)
-            
             for entity in ambiguous_entities:
                 if entity.canonical_id:
                     all_llm_mappings[entity.id] = entity.canonical_id
 
         # 2. SEMANTIC CLUSTERING (Orphan Entities)
-        # Groups entities that didn't match the Encyclopedia but might be duplicates of each other.
         orphans = [e for e in entity_models if not e.canonical_id]
         
         if orphans:
-            logger.info(f"🧩 Clustering {len(orphans)} orphan entities for semantic resolution...")
-
-            # We group by category using a simple dictionary approach
             orphans_by_cat = {}
             for e in orphans:
                 orphans_by_cat.setdefault(e.category, []).append(e)
 
             for category, group in orphans_by_cat.items():
-                clusters = self._create_hybrid_clusters(group) 
-                for cluster in clusters:
-                    # Pyramidal resolution handles merging if cluster >= 2, 
-                    # otherwise no action is needed
+                logger.info(f"🔍 Analyzing category '{category}' with {len(group)} entities...")
+
+                # A. STEP 1: Algorithmic Clustering (Blocking)
+                # Creates clusters based on typos/fuzzy match, including singletons.
+                algo_clusters = self._create_algo_clusters(group)
+                
+                # B. STEP 2: LLM Consultant (Semantic Bridge)
+                # We pick the first entity of each cluster as a 'Representative'.
+                representatives = [cluster[0] for cluster in algo_clusters]
+                
+                # The consultant returns indices of 'representatives' that should merge.
+                # Example: [[0, 2]] means algo_clusters[0] and algo_clusters[2] are suspected duplicates.
+                bridge_indices_list = await self._get_semantic_bridges(representatives, str(category))
+                
+                # C. STEP 3: Super-Clustering
+                # We merge algo_clusters together based on LLM Consultant's advice.
+                final_clusters_to_resolve = self._merge_clusters_by_indices(algo_clusters, bridge_indices_list)
+                
+                logger.info(f"🚀 Processing {len(final_clusters_to_resolve)} refined clusters for {category}...")
+
+                # D. STEP 4: Pyramidal Resolver (Final Verdict)
+                for cluster in final_clusters_to_resolve:
                     if len(cluster) >= 2:
+                        # The resolver now sees the full context of the merged groups.
                         mapping = await self._pyramidal_resolve(cluster, str(category))
                         all_llm_mappings.update(mapping)
-                    else:
-                        # Single entity in a cluster requires no LLM action
-                        continue
 
         resolved_entities = pd.DataFrame([e.model_dump() for e in entity_models])
-
         return resolved_entities, all_llm_mappings
-
+    
     async def _resolve_cluster(self, cluster: List[EntityModel], entity_category: str) -> Dict[str, str]:
         """
         Analyzes a semantic cluster via LLM to identify internal duplicates.
@@ -208,8 +220,6 @@ class LLMResolver:
             logger.error(f"❌ LLMResolver anchoring error ({entity.title}): {e}")
             return {"choice": "NEW_ENTITY"}
 
-
-
     async def _pyramidal_resolve(self, cluster: List[EntityModel], entity_category: str) -> Dict[str, str]:
         """
         Processes large clusters by batches and recursively re-evaluates 
@@ -280,9 +290,8 @@ class LLMResolver:
 
                 # Compress the path: directly point source -> final canonical target
                 master[source] = target
-
-
-    def _create_hybrid_clusters(self, entities: List[EntityModel]) -> List[List[EntityModel]]:
+        
+    def _create_algo_clusters(self, entities: List[EntityModel]) -> List[List[EntityModel]]:
         """
         Groups entities into 'potential duplicate clusters' using a graph-based approach.
         
@@ -326,10 +335,70 @@ class LLMResolver:
         
         logger.debug(f"📊 Hybrid clustering created {len(clusters)} groups from {len(entities)} entities.")
         
-        # Return list of lists of EntityModels
-        return [[entities[idx] for idx in component] for component in clusters]
+        # Return list of lists of EntityModels, sorted to make the first elem the semantically richest entity
+        return [
+    sorted(
+        [entities[idx] for idx in component], 
+        key=lambda e: (len(e.title), len(e.description)), 
+        reverse=True
+    ) 
+    for component in clusters
+]
 
-    
+    async def _get_semantic_bridges(self, representatives: List[EntityModel], category: str) -> List[List[int]]:
+        """
+        Consults the LLM to find semantic overlaps between cluster representatives.
+        Returns a list of index groups, e.g., [[0, 2], [1, 3, 4]].
+        """
+        if len(representatives) <= 1:
+            return []
+
+        titles_text = "\n".join([f"[#{i}] {e.title}" for i, e in enumerate(representatives)])
+
+        try:
+            # Using the standardized CONSULTANT prompts
+            bridges = await self.llm_service.ask_json(
+                system_prompt=CONSULTANT_RESOLUTION_SYSTEM_PROMPT,
+                user_prompt=CONSULTANT_RESOLUTION_USER_PROMPT.format(
+                    category=category,
+                    titles_text=titles_text
+                )
+            )
+            return bridges if isinstance(bridges, list) else []
+        except Exception as e:
+            logger.error(f"❌ LLMConsultant bridge error: {e}")
+            return []
+        
+    def _merge_clusters_by_indices(self, clusters: List[List[EntityModel]], bridge_indices: List[List[int]]) -> List[List[EntityModel]]:
+        """
+        Merges existing clusters into larger ones based on bridge suggestions.
+        Uses a graph-based approach to handle transitive merges (A=B, B=C -> [A,B,C]).
+        """
+        if not bridge_indices:
+            return clusters
+
+        # Build a meta-graph of clusters
+        meta_G = nx.Graph()
+        meta_G.add_nodes_from(range(len(clusters)))
+
+        for bridge in bridge_indices:
+            for i in range(len(bridge)):
+                for j in range(i + 1, len(bridge)):
+                    meta_G.add_edge(bridge[i], bridge[j])
+
+        # Extract connected components of clusters
+        meta_components = list(nx.connected_components(meta_G))
+        
+        new_clusters = []
+        for component in meta_components:
+            # Flatten all entities from the merged clusters into one
+            merged_cluster = []
+            for cluster_idx in component:
+                merged_cluster.extend(clusters[cluster_idx])
+            new_clusters.append(merged_cluster)
+
+        return new_clusters
+
     def _format_anchoring_candidates(self, candidates: List[Dict[str, Any]]) -> str:
         """
         Formats the list of EncyclopediaEntry candidates into a structured string for the LLM prompt.

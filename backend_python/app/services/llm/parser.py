@@ -1,7 +1,7 @@
 import json
 import re
 import logging
-from typing import Any, List, Dict, Tuple
+from typing import Any, List, Dict, Tuple, Union, Optional
 import pandas as pd
 from app.core.data_model.base import slugify_entity
 
@@ -81,30 +81,32 @@ class LLMParser:
         return "\n".join(context_parts)
 
     @staticmethod
-    def to_json(text: str) -> Dict[str, Any]:
+    def to_json(text: str) -> Optional[Union[Dict[str, Any], List[Any]]]:
         """
-        Parses a JSON string from an LLM response, handling Markdown formatting.
+        Parses a JSON string from an LLM response, handling both Objects and Arrays.
         
         Logic:
-        - Removes Markdown code blocks (```json ... ```).
-        - Uses Regex to isolate the JSON object if the LLM added conversational filler.
+        - Removes Markdown code blocks.
+        - Uses Regex to isolate either a JSON object { } or a JSON array [ ].
         
         Returns:
-        - The parsed dictionary or an empty dict if parsing fails.
+        - The parsed dictionary, list, or an empty dict if parsing fails.
         """
         try:
-            # Strip Markdown code fences
+            # 1. Strip Markdown code fences
             clean_text = re.sub(r"```json\n?|\n?```", "", text).strip()
             
-            # Robust fallback: find the first '{' and last '}'
-            json_match = re.search(r"\{.*\}", clean_text, re.DOTALL)
+            # 2. Robust fallback: find the outermost structure
+            # We look for the first occurrence of '{' or '[' and the last corresponding character
+            json_match = re.search(r"(\{.*\}|\[.*\])", clean_text, re.DOTALL)
+            
             if json_match:
                 clean_text = json_match.group(0)
                 
             return json.loads(clean_text)
         except Exception as e:
-            print(f"❌ JSON Parsing Failure: {e}")
-            return {}
+            logger.error(f"❌ JSON Parsing Failure: {e}")
+            return {} # Returning empty dict as safe fallback
     
     
     @staticmethod

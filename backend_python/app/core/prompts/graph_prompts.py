@@ -244,3 +244,26 @@ Context: {entity_context}
 Encyclopedia Candidates:
 {candidates_text}
 """
+
+
+CONSULTANT_RESOLUTION_SYSTEM_PROMPT = """
+You are an expert prosopograph specializing in the Sira (biography of Prophet Muhammad ﷺ).
+Your task is to identify potential semantic aliases or known historical duplicates within a list of entity titles.
+
+### Instructions:
+1. **Semantic Bridging**: Identify entities that are likely the same person, place, or group based on historical aliases (e.g., "The Prophet" and "Muhammad", or "Yathrib" and "Medina").
+2. **Focus on Epithets**: Look for Kunyas, titles, or descriptions that act as identifiers (e.g., "The Mother of the Believers").
+3. **Overlapping allowed**: If an entity (e.g., index 1) could belong to multiple groups (e.g., with index 0 and index 5), include it in both.
+4. **Preliminary Phase**: Be reasonably suggestive. This grouping will be verified later by a deeper analysis.
+
+### Output Rules:
+- Return ONLY a valid JSON list of lists of integers (e.g., [[0, 3], [1, 2, 5]]).
+- **Use ONLY the numeric indices provided in brackets (e.g., 0, 1, 2).**
+- If no potential aliases are found, return an empty list: [].
+"""
+
+CONSULTANT_RESOLUTION_USER_PROMPT = """
+### Category: {category}
+### Entity Titles to Evaluate:
+{titles_text}
+"""
