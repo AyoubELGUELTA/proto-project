@@ -1,0 +1,53 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Dependencies
+boto3
+
+# Framework
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+pandas
+
+# Ingestion
+docling
+docling-core
+langchain-docling
+numpy
+PyMuPDF
+asyncpg
+
+
+# LangChain & Graph
+langchain
+langchain-core
+langchain-community
+langchain-text-splitters
+langchain-openai
+langgraph
+tiktoken
+
+# LlamaIndex
+llama-index-core
+llama-index-graph-stores-neo4j
+neo4j
+
+# IA
+torch
+transformers
+gliner
+openai
+
+# Utils
+python-dotenv
+python-magic
+requests
+phonetics
+levenshtein
+scikit-learn
+
+# Tests
+pytest
+pytest-asyncio
+fakeredis # fakeredis permet de simuler un serveur Redis en mémoire pour tes tests unitaires
