@@ -58,18 +58,24 @@ class EntityResolutionEngine:
     
         # --- 1. CORE RESOLUTION (Phonetic & Exact) ---
         try:
+            id_to_title = dict(zip(entities['id'], entities['title']))
             entities, core_mappings = await self.core.resolve(entities)
             for old_id, new_id in core_mappings.items(): 
                 tracker.add_mapping(old_id, new_id)
+                logger.info(f" [CORE MERGE] {id_to_title.get(old_id)} -> {id_to_title.get(new_id)}")
+                
             logger.info(f"🔹 Core: {len(core_mappings)} deterministic mappings created.")
         except Exception as e:
             logger.error(f"❌ Core Resolution Error: {e}")
         
         # --- 2. SEMANTIC RESOLUTION (LLM) ---
         try:
+            id_to_title = dict(zip(entities['id'], entities['title']))
             entities, llm_mappings = await self.llm.llm_resolve(entities)
             for old_id, new_id in llm_mappings.items(): 
                 tracker.add_mapping(old_id, new_id)
+                logger.info(f" 🧠 [LLM MERGE] {id_to_title.get(old_id)} -> {id_to_title.get(new_id)}")
+
             logger.info(f"🔹 LLM: {len(llm_mappings)} semantic mappings created.")
         except Exception as e:
             logger.error(f"❌ LLM Resolution Error: {e}")

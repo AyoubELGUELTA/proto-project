@@ -193,9 +193,9 @@ Your task is to identify if a list of entities are duplicates.
 4. **Be conservative**: If not 100% sure, do NOT merge.
 
 ### Output Rules:
-- Format: (MERGE <|> Source_Index <|> Target_Index)
+- Format: (MERGE <|> Source_Index <|> Target_Index).
 - **Use ONLY the numeric indices provided in brackets (e.g., 0, 1, 2) instead of names.**
-- **Multiple entries MUST be separated by** ` ## ` (Example: (MERGE <|> 0 <|> 1) ## (MERGE <|> 2 <|> 3))
+- **Multiple entries MUST be separated by** ` ## ` (Example: (MERGE <|> 0 <|> 1) ## (MERGE <|> 2 <|> 3)).
 - If no duplicates, return an empty string.
 """
 

@@ -77,7 +77,10 @@ async def ingest_single_file(file: UploadFile) -> Dict[str, Any]:
 
     # ASSEMBLE RESOLUTION ENGINE
     core_res = CoreResolver(encyclopedia=EncyclopediaManager(encyclopedia_repo))
-    llm_res = LLMResolver(llm_light)
+    llm_res = LLMResolver(
+        light_service=llm_light, 
+        heavy_service=llm_heavy
+    )
     res_engine = EntityResolutionEngine(core_resolver=core_res, llm_resolver=llm_res)
 
 

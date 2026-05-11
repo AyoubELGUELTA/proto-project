@@ -35,9 +35,10 @@ class LLMResolver:
        (those not found in the Encyclopedia) by analyzing names and context snippets.
     """
 
-    def __init__(self, llm_service: LLMService):
-        """Initializes the resolver with a LLM service for semantic decision-making."""
-        self.llm_service = llm_service
+    def __init__(self, light_service: LLMService, heavy_service: LLMService):
+        """Initializes the resolver with both LLM services for semantic decision-making."""
+        self.light_service = light_service
+        self.heavy_service = heavy_service
 
 
     async def llm_resolve(self, entities: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, str]]:
@@ -135,7 +136,7 @@ class LLMResolver:
 
         try:
             # Expects tuples like ["MERGE", "0", "1"] where numbers are the indices
-            tuples = await self.llm_service.ask_tuples(
+            tuples = await self.heavy_service.ask_tuples(
                 system_prompt=ENTITY_RESOLUTION_SYSTEM_PROMPT,
                 user_prompt=ENTITY_RESOLUTION_USER_PROMPT.format(
                     entity_type=entity_category,
@@ -190,7 +191,7 @@ class LLMResolver:
             # The LLM evaluates the context vs candidates to determine the best match
             slug_to_id = {c.get("slug"): c.get("id") for c in candidates}
 
-            result = await self.llm_service.ask_json(
+            result = await self.light_service.ask_json(
                 system_prompt=ANCHORING_RESOLUTION_SYSTEM_PROMPT,
                 user_prompt=ANCHORING_RESOLUTION_USER_PROMPT.format(
                     entity_title=entity.title,
@@ -357,7 +358,7 @@ class LLMResolver:
 
         try:
             # Using the standardized CONSULTANT prompts
-            bridges = await self.llm_service.ask_json(
+            bridges = await self.light_service.ask_json(
                 system_prompt=CONSULTANT_RESOLUTION_SYSTEM_PROMPT,
                 user_prompt=CONSULTANT_RESOLUTION_USER_PROMPT.format(
                     category=category,
