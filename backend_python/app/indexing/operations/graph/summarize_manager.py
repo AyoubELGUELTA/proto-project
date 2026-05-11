@@ -6,11 +6,12 @@ import pandas as pd
 from typing import List, Tuple
 from app.services.llm.service import LLMService
 from app.core.config.graph_config import MAX_SUMMARY_LENGTH, ENTITY_BATCH_SIZE, MAX_INPUT_TOKENS #TODO
-from app.core.prompts.graph_prompts import (
+from app.core.prompts.graph_prompts.entity_summarize_prompts import (
                 ENTITY_SUMMARIZE_SYSTEM_PROMPT, 
-                RELATIONSHIP_SUMMARIZE_SYSTEM_PROMPT,
                 COMMON_SUMMARIZE_USER_PROMPT
             )
+from app.core.prompts.graph_prompts.relationship_summarize_prompts import RELATIONSHIP_SUMMARIZE_SYSTEM_PROMPT
+
 
 import logging
 logger = logging.getLogger(__name__)

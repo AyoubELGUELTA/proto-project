@@ -5,7 +5,7 @@
 from typing import List
 from app.core.config.graph_config import ENTITY_TYPES, MAX_GLEANINGS, RECORD_DELIMITER
 from app.services.llm.service import LLMService
-from app.core.prompts.graph_prompts import (
+from app.core.prompts.graph_prompts.extract_prompts import (
     GRAPH_EXTRACTION_SYSTEM_PROMPT, 
     GRAPH_EXTRACTION_USER_PROMPT,
     CONTINUE_PROMPT, 

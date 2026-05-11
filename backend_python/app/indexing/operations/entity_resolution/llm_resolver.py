@@ -9,7 +9,7 @@ from app.core.data_model.entity import EntityModel
 from app.core.data_model.encyclopedia import EncyclopediaEntry
 
 from app.services.llm.service import LLMService
-from app.core.prompts.graph_prompts import (
+from app.core.prompts.graph_prompts.entity_resolution_prompts import (
     ENTITY_RESOLUTION_SYSTEM_PROMPT, 
     ENTITY_RESOLUTION_USER_PROMPT,
     ANCHORING_RESOLUTION_SYSTEM_PROMPT,
