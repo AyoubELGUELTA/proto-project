@@ -48,8 +48,8 @@ class LLMService:
         
         try:
             tuples = self.parser.to_tuples(raw_text)
-            if not tuples:
-                logger.warning("⚠️ LLM returned empty or malformed tuples.")
+            if not tuples and raw_text not in ["", '""']:
+                logger.warning(f"⚠️ LLM returned empty or malformed tuples. Here is the content {raw_text[:100]}...")
             return tuples
         except Exception as e:
             logger.error(f"❌ Failed to parse LLM response into tuples: {e}")

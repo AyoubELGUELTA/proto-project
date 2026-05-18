@@ -80,32 +80,43 @@ class EntityResolutionEngine:
         except Exception as e:
             logger.error(f"❌ LLM Resolution Error: {e}")
 
-        # --- 3. ENCYCLOPEDIA ANCHORING ---
+        # --- 3. ENCYCLOPEDIA ANCHORING (Merged & Cleaned) ---
+        
+        encyclo_titles = {}
         anchoring_count = 0
         for row in entities.itertuples():
-            if hasattr(row, 'canonical_id') and row.canonical_id:
-                tracker.add_mapping(row.id, row.canonical_id)
+            c_id = getattr(row, 'canonical_id', None)
+            if c_id:
+                tracker.add_mapping(row.id, c_id)
                 anchoring_count += 1
+                # Capture du titre officiel pour la synchronisation finale
+                official_name = getattr(row, 'canonical_title', None)
+                if official_name:
+                    encyclo_titles[c_id] = official_name
+
         if anchoring_count > 0:
-            logger.info(f"⚓ Anchoring: {anchoring_count} entities linked to Encyclopedia UUIDs.")
+            logger.info(f"⚓ Anchoring: {anchoring_count} entities linked to Encyclopedia.")
 
         # --- 4. FINAL TRANSITIVE RESOLUTION ---
-        # Get the explicit chain of redirects (A -> B -> C becomes A -> C)
         final_map = tracker.resolve()
 
-        # --- 5. PHYSICAL UPDATE ---
-        # We apply the explicit mapping to the 'id' column
+        # --- 5. PHYSICAL UPDATE & SYNC ---
         if final_map:
+            # On construit la table de vérité des noms (Locaux + Encyclopédie)
+            id_to_title = dict(zip(entities['id'], entities['title']))
+            id_to_title.update(encyclo_titles)
+            
+            # Redirection des IDs
             entities['id'] = entities['id'].map(final_map).fillna(entities['id'])
+            
+            # Synchronisation des titres sur l'ID de destination
+            # Si id_to_title[nouveau_id] n'existe pas, on garde l'actuel via fillna
+            entities['title'] = entities['id'].map(id_to_title).fillna(entities['title'])
 
-        # --- 6. PHYSICAL AGGREGATION ---
-        # Consolidate objects sharing the same ID
+        # --- 6. AGGREGATION ---
         final_entities = self._aggregate_entities(entities)
-
-        diff = initial_count - len(final_entities)
-        logger.info(f"🔗 Final Map: {len(final_map)} total redirections.")
-        logger.info(f"✅ Resolution Complete: {initial_count} -> {len(final_entities)} (Merged {diff} duplicates).")
-
+        
+        logger.info(f"✅ Resolution Complete: {initial_count} -> {len(final_entities)}")
         return final_entities, final_map
     
     def _aggregate_entities(self, entities_df: pd.DataFrame) -> pd.DataFrame:       
@@ -151,8 +162,8 @@ class EntityResolutionEngine:
             "frequency": "sum",
             "rank": "max",
             "category": "first",
-            "canonical_id": "first",
-            "review_status": "first",
+            "canonical_id": lambda x: x.dropna().iloc[0] if not x.dropna().empty else None, # We take the canonical_id of one of the entities if one of them got one
+            "review_status": lambda x: "CORE_VALIDATED" if "CORE_VALIDATED" in x.values else x.iloc[0], # We take the most advanced status if available
             "attributes": merge_attributes,
             "community_ids": merge_communities
         }

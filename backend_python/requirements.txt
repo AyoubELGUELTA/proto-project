@@ -48,6 +48,7 @@ levenshtein
 scikit-learn
 
 # Tests
+pytest-mock
 pytest
 pytest-asyncio
 fakeredis # fakeredis permet de simuler un serveur Redis en mémoire pour tes tests unitaires

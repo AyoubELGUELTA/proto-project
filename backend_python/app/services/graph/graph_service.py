@@ -8,11 +8,14 @@ from app.core.data_model.text_units import TextUnit
 
 from app.indexing.operations.graph.graph_extractor import EntityAndRelationExtractor
 from app.indexing.operations.graph.summarize_manager import SummarizeManager
+from app.indexing.operations.entity_resolution.resolution_engine import EntityResolutionEngine
+from app.indexing.operations.graph.store_manager import GraphStoreManager
+
+from app.services.graph.community_service import CommunityService
 
 from app.services.llm.parser import LLMParser
-from app.indexing.operations.entity_resolution.resolution_engine import EntityResolutionEngine
 
-from app.indexing.operations.graph.store_manager import GraphStoreManager
+from app.indexing.workflows.create_communities import run_create_communities_workflow
 
 import logging
 logger = logging.getLogger(__name__)
@@ -34,13 +37,15 @@ class GraphService:
         summarizer: SummarizeManager, 
         parser: LLMParser, 
         resolution_engine: EntityResolutionEngine,
-        store_manager: GraphStoreManager
+        store_manager: GraphStoreManager,
+        community_service: CommunityService
     ):
         self.extractor = extractor
         self.summarizer = summarizer
         self.parser = parser
         self.resolution_engine = resolution_engine
         self.store_manager = store_manager
+        self.community_service = community_service
 
     async def run_pipeline(
         self, 
@@ -97,11 +102,9 @@ class GraphService:
         
         gm_samples = list(global_mapping.items())[:35]
         for old_id, new_id in gm_samples:
-            # On cherche la ligne exacte correspondant à l'ancien ID
             old_match = pre_resolution_df[pre_resolution_df["id"] == old_id]
             old_name = old_match.iloc[0]["title"] if not old_match.empty else "Unknown_Old_ID"
             
-            # On cherche la ligne exacte correspondant au nouvel ID
             new_match = entities_df[entities_df["id"] == new_id]
             new_name = new_match.iloc[0]["title"] if not new_match.empty else "Unknown_New_ID"
             
@@ -138,14 +141,20 @@ class GraphService:
         logger.info("✅ Summarization complete.\n")
 
 
-        # --- Phase 5: PERSISTENCE ---
+        # --- Phase 5: PERSISTENCE (Existing) ---
         if persist:
             logger.info("💾 Phase 5: Persisting graph to database...")
             try:
                 await self.store_manager.save_graph(entities_df, relationships_df)
                 logger.info("✅ Graph successfully saved to Neo4j.")
+                
+                # --- Phase 6: COMMUNITY DETECTION  --- # We trigger this ONLY if persistence was successful
+                logger.info("🏘️ Phase 6: Building community hierarchy...")
+                
+                await run_create_communities_workflow(self.community_service)
+                
             except Exception as e:
-                logger.error(f"❌ Failed to persist graph: {e}")
+                logger.error(f"❌ Failed during graph persistence/clustering: {e}")
 
         logger.info("🏁 Graph pipeline finished successfully.")
         return entities_df, relationships_df

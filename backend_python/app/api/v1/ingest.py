@@ -13,6 +13,7 @@ from app.services.storage.file_service import FileService
 from app.services.llm.factory import LLMFactory
 from app.services.llm.parser import LLMParser
 from app.services.graph.graph_service import GraphService
+from app.services.graph.community_service import CommunityService
 from app.services.startup_service import StartupService
 
 # Resolution Engine & Operations
@@ -84,13 +85,17 @@ async def ingest_single_file(file: UploadFile) -> Dict[str, Any]:
     res_engine = EntityResolutionEngine(core_resolver=core_res, llm_resolver=llm_res)
 
 
-    # ASSEMBLE GRAPH SERVICE
+    # ASSEMBLE GRAPH SERVICES
+    
+    community_service = CommunityService(neo4j_client)
+
     graph_service = GraphService(
         extractor=EntityAndRelationExtractor(llm_light),
         summarizer=SummarizeManager(llm_light), 
         parser=parser,
         resolution_engine=res_engine,
-        store_manager=store_manager
+        store_manager=store_manager,
+        community_service = community_service
 
     )
 

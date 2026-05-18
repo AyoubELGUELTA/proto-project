@@ -12,7 +12,7 @@ class StartupService:
 
     async def initialize_encyclopedia(self):
         # 1. Check if the table is empty
-        count = await self.db.fetch_val("SELECT COUNT(*) FROM encyclopedia")
+        count = await self.db.fetchval("SELECT COUNT(*) FROM encyclopedia")
         if count > 0:
             return
         

@@ -108,6 +108,7 @@ class CoreResolver:
                 canonical = matches[0]
                 logger.info(f"✅ Encyclopedia Match: '{title}' -> {canonical.id}")
                 res["canonical_id"] = canonical.id
+                res["canonical_title"] = canonical.title 
                 res["review_status"] = "CORE_VALIDATED"
                 
             elif len(matches) > 1:

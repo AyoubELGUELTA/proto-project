@@ -50,13 +50,13 @@ class GraphStoreManager:
         
         query = """
         UNWIND $batch AS row
-        MERGE (e:Entity {id: row.title})
+        MERGE (e:Entity {id: row.id}) 
         SET e.title = row.title,
-            e.type = row.type,
-            e.description = row.description,
-            e.frequency = row.frequency,
-            e.updated_at = timestamp()
-        """
+        e.type = row.type,
+        e.description = row.description,
+        e.frequency = row.frequency,
+        e.updated_at = timestamp()"""
+    
         await self.client.execute_query(query, parameters={"batch": data})
         logger.debug(f"💎 Upserted {len(data)} Entity nodes.")
 
@@ -71,11 +71,21 @@ class GraphStoreManager:
         # We use MERGE to avoid duplicate edges between same nodes
         query = """
         UNWIND $batch AS row
-        MATCH (source:Entity {id: row.source})
-        MATCH (target:Entity {id: row.target})
-        MERGE (source)-[r:RELATED_TO {description: row.description}]->(target)
-        SET r.weight = row.weight,
-            r.source_id = row.source_id
+        //We match them based on their ids
+        MATCH (source:Entity {id: row.source_id})
+        MATCH (target:Entity {id: row.target_id})
+        
+        MERGE (source)-[r:RELATED]->(target) 
+        
+        SET r.description = row.description,
+            r.weight = row.weight,
+            r.source_ids = row.source_ids
         """
-        await self.client.execute_query(query, parameters={"batch": data})
-        logger.debug(f"🔗 Upserted {len(data)} Relationship edges.")
+
+        try:
+            await self.client.execute_query(query, parameters={"batch": data})
+            logger.debug(f"🔗 Successfully upserted {len(data)} RELATED edges.")
+        except Exception as e:
+            logger.error(f"❌ Failed to upsert relationships: {e}")
+            raise
+            
