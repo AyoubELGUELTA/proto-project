@@ -27,11 +27,11 @@ services:
   fastapi:
     container_name: fastapi_rag
     build:
-      context: ./backend-python
+      context: ./backend_python
       dockerfile: Dockerfile
     env_file: .env
     volumes:
-      - ./backend-python:/app           
+      - ./backend_python:/app           
       - hf_cache:/root/.cache/huggingface
     ports:
       - "8000:8000"
@@ -45,10 +45,10 @@ services:
   # --- Node.js : Backend / Gateway ---
   backend-node:
     container_name: node_gateway
-    build: ./backend-node
+    build: ./backend_node
     env_file: .env
     volumes:
-      - ./backend-node:/app
+      - ./backend_node:/app
       - /app/node_modules
     depends_on:
       - qdrant

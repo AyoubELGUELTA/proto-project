@@ -1,5 +1,6 @@
 # app/services/llm/client.py
 import logging
+from typing import Any
 from langchain_openai import ChatOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 from app.services.llm.tracker import LLMTracker
@@ -45,7 +46,7 @@ class LLMClient:
             stream_usage=config.token_report
         )
 
-    async def ask(self, messages: list) -> str:
+    async def ask(self, messages: list, response_format : dict = None, config : Any = None) -> str:
         """
         Main entry point for LLM requests.
         
@@ -55,20 +56,25 @@ class LLMClient:
 
         Args:
             messages: List of LangChain message objects (SystemMessage, HumanMessage).
+            response_format (dict, optional): Native JSON Schema format for strict outputs.
+            config (Any, optional): Model-specific configuration override (e.g. SUMMARIZATION_LLM_CONFIG).
 
         Returns:
             The textual content of the model's response.
         """
-
-        # 1. Cache Lookup (Saves money and time)
+        # 1. Cache Lookup
         cached_response = self.cache.get(messages)
         if cached_response:
             print(f"💾 Cache HIT for model {self.model_name}")
             return cached_response
 
-        # 2. Resilient API Call
+        # 2. Resilient API Call (We pass down both response_format and config)
         print(f"🌐 Cache MISS. Dispatching API call to {self.model_name}...")
-        response_text = await self._execute_with_retry(messages)
+        response_text = await self._execute_with_retry(
+            messages, 
+            response_format=response_format, 
+            config=config
+        )
 
         # 3. Cache Update
         self.cache.set(messages, response_text)
@@ -81,15 +87,17 @@ class LLMClient:
         stop=stop_after_attempt(3),
         reraise=True
     )
-    async def _execute_with_retry(self, messages: list) -> str:
+    async def _execute_with_retry(self, messages: list, response_format: dict = None, config: Any = None) -> str:
         """
-        Executes the network call with a safety retry mechanism.
+        Executes the network call with a safety retry mechanism and runtime configuration overrides.
         
         The 'exponential backoff' ensures that the client waits progressively 
         longer (2s, 4s, 8s...) between attempts to handle rate limits or transient errors.
 
         Args:
             messages: List of messages formatted for LangChain.
+            response_format (dict, optional): Native JSON Schema format for strict outputs.
+            config (Any, optional): Model-specific configuration override.
 
         Returns:
             Raw completion content.
@@ -97,8 +105,23 @@ class LLMClient:
         Raises:
             Exception: If the call fails after the maximum number of attempts.
         """
-        # Await the asynchronous LangChain call
-        response = await self.llm.ainvoke(messages)
+        # Build base generation arguments
+        kwargs = {}
+        if response_format:
+            kwargs["response_format"] = response_format
+
+        # Runtime Configuration Overrides
+        # We check if a custom config object was passed, and dynamically adapt temperature or model
+        current_model_name = self.model_name
+        if config:
+            if hasattr(config, "temperature"):
+                kwargs["temperature"] = config.temperature
+            if hasattr(config, "model_name"):
+                kwargs["model"] = config.model_name
+                current_model_name = config.model_name
+
+        # Execute call with LangChain
+        response = await self.llm.ainvoke(messages, **kwargs)
         
         # Metadata Extraction (Handling variations between LangChain versions)
         usage = getattr(response, "usage_metadata", {}) or {}
@@ -117,12 +140,12 @@ class LLMClient:
             or 0
         )
 
-        # Usage Tracking
+        # Usage Tracking mapped to the actual model used during this execution
         if self.tracker:
             self.tracker.add_usage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
-                model_name=self.model_name
+                model_name=current_model_name
             )
         
         return response.content

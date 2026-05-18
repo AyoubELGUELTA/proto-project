@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from pydantic import Field
+from pydantic import Field, BaseModel
 from .base import NamedModel
 
 class CommunityReportModel(NamedModel):
@@ -17,3 +17,14 @@ class CommunityReportModel(NamedModel):
     attributes: Dict[str, Any] = Field(default_factory=dict)
     size: Optional[int] = Field(None, description="Complexity or size indicator")
     period: Optional[str] = Field(None, description="Temporal context of the report")
+
+# --- Schemas for pydantic model-prompting ---
+
+class CommunityFindingSchema(BaseModel):  
+    title: str = Field(..., description="Title of the key finding")
+    explanation: str = Field(..., description="Detailed and evidence-based explanation of this finding")
+
+class CommunityReportSchema(BaseModel): 
+    title: str = Field(..., description="Semantic and high-level title of the community")
+    summary: str = Field(..., description="Executive summary of the community’s overall dynamics")
+    findings: List[CommunityFindingSchema] = Field(..., description="List of the major findings identified within this group")

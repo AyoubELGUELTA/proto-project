@@ -1,40 +1,18 @@
 import logging
 from typing import Dict, Any, List
+
 from app.services.llm.service import LLMService
 from app.core.config.graph_config import SUMMARIZATION_LLM_CONFIG
+from app.core.data_model.community_report import CommunityReportSchema
+from app.core.prompts.graph_prompts.community_prompts import COMMUNITY_REPORT_SYSTEM_PROMPT, COMMUNITY_REPORT_USER_PROMPT
 
 logger = logging.getLogger(__name__)
 
-# Prompts de base inspirés de la méthodologie GraphRAG
-COMMUNITY_REPORT_SYSTEM_PROMPT = """
-You are an expert AI research analyst. Your job is to generate a comprehensive, structured report about a specific community of entities and relationships extracted from historical and theological texts.
-
-You will be provided with a list of Entities and their descriptions, along with a list of Relationships connecting them.
-Your goal is to synthesize this data into a coherent analysis containing:
-1. A semantic title that accurately captures the theme of this group.
-2. An executive summary explaining the overall dynamics and importance of this community.
-3. A list of key findings (observations) with a clear title and a detailed explanation backed by the provided data.
-
-You must remain completely factual and strictly adhere to the provided context. Do not invent connections.
-"""
-
-COMMUNITY_REPORT_USER_PROMPT_TEMPLATE = """
---- COMMUNITY DATA START ---
-
-## ENTITIES
-{entities_context}
-
-## RELATIONSHIPS
-{relationships_context}
-
---- COMMUNITY DATA END ---
-
-Generate the structured report based on the format requested.
-"""
 
 class CommunityReportBuilder:
     """
-    Operation responsible for turning raw community graph context into structured LLM reports.
+    Operation responsible for turning raw community graph contexts into 
+    strongly-typed, validated LLM analysis reports using your domain models.
     """
 
     def __init__(self, llm_service: LLMService):
@@ -43,61 +21,56 @@ class CommunityReportBuilder:
         """
         self.llm = llm_service
 
-    async def generate_report(self, community_id: str, raw_context: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_report(self, community_id: str, raw_context: Dict[str, Any]) -> CommunityReportSchema:
         """
         Processes raw community database records, formats them into a prompt,
-        and requests a structured report from the LLM.
+        and requests a natively validated structured report from the LLM based on CommunityReport.
 
         Args:
-            community_id (str): The unique identifier of the community.
+            community_id (str): The unique identifier of the community (e.g., 'level_0_id_1').
             raw_context (Dict): Contains 'entities' and 'relationships' lists from Neo4j.
 
         Returns:
-            Dict[str, Any]: The structured data containing title, summary, and findings.
+            CommunityReportSchema: A validated Pydantic model containing title, summary, and findings.
         """
-        logger.info(f"📝 Formatting context and preparing LLM prompt for community [{community_id}]...")
+        logger.info(f"📝 Formatting context for community [{community_id}]...")
 
-        # 1. Formatage textuel des entités pour le prompt
+        # 1. Text formatting of entities for the prompt
         entities_lines = []
         for e in raw_context.get("entities", []):
-            entities_lines.append(f"- ID: {e['id']} | Title: {e['title']} | Type: {e['type']} | Description: {e['description']}")
+            entities_lines.append(
+                f"- ID: {e['id']} | Title: {e['title']} | Type: {e['type']} | Description: {e['description']}"
+            )
         entities_context = "\n".join(entities_lines) if entities_lines else "No entities in this community."
 
-        # 2. Formatage textuel des relations pour le prompt
+        # 2. Text formatting of relationships for the prompt
         rels_lines = []
         for r in raw_context.get("relationships", []):
-            rels_lines.append(f"- {r['source']} ──> {r['target']} : {r['description']}")
+            rels_lines.append(
+                f"- {r['source']} ──> {r['target']} : {r['description']}"
+            )
         relationships_context = "\n".join(rels_lines) if rels_lines else "No internal relationships."
 
-        # 3. Assemblage final du prompt utilisateur
-        user_prompt = COMMUNITY_REPORT_USER_PROMPT_TEMPLATE.format(
+        # 3. Final assembly of the user prompt
+        user_prompt = COMMUNITY_REPORT_USER_PROMPT.format(
             entities_context=entities_context,
             relationships_context=relationships_context
         )
 
         try:
-            logger.info(f"🧠 Dispatching community [{community_id}] to LLM for summarization...")
+            logger.info(f"🧠 Dispatching community [{community_id}] to LLM for structured summarization...")
             
-            # TODO: Remplacer par l'appel Pydantic Prompting structuré dès que le modèle est prêt.
-            # Pour l'instant, la plomberie est branchée sur la config "Heavy" ou "Summarization" définie.
-            raw_response = await self.llm.client.ask(
-                messages=[
-                    {"role": "system", "content": COMMUNITY_REPORT_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt}
-                ],
-                # config=SUMMARIZATION_LLM_CONFIG # Optionnel selon la signature de ton client
+            # Utilizing the structured extraction method with your imported schema
+            report: CommunityReportSchema = await self.llm.ask_structured(
+                system_prompt=COMMUNITY_REPORT_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                response_model=CommunityReportSchema,
+                config=SUMMARIZATION_LLM_CONFIG
             )
 
-            # Simulation de la sortie en attendant le câblage Pydantic strict
-            logger.info(f"✅ Report successfully generated by LLM for [{community_id}].")
-            
-            # Ce dictionnaire sera directement remplacé par le mapping de l'objet Pydantic au prochain assaut
-            return {
-                "title": f"Analyzed {community_id}",
-                "summary": raw_response,
-                "findings": []
-            }
+            logger.info(f"✅ Validated structured report successfully generated for [{community_id}].")
+            return report
 
         except Exception as e:
-            logger.error(f"❌ Failed to generate LLM report for community {community_id}: {e}")
+            logger.error(f"❌ Failed to generate structured LLM report for community {community_id}: {e}")
             raise

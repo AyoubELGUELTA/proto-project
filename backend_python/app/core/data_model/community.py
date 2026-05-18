@@ -21,11 +21,3 @@ class CommunityModel(NamedModel):
     size: Optional[int] = Field(None, description="Amount of text units in this community")
     period: Optional[str] = Field(None, description="Time period associated with this community")
 
-class CommunityFinding(BaseModel):
-    title: str = Field(..., description="Title of the key finding")
-    explanation: str = Field(..., description="Detailed and evidence-based explanation of this finding")
-
-class CommunityReport(BaseModel):
-    title: str = Field(..., description="Semantic and high-level title of the community")
-    summary: str = Field(..., description="Executive summary of the community’s overall dynamics")
-    findings: List[CommunityFinding] = Field(..., description="List of the major findings identified within this group")

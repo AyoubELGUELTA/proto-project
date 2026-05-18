@@ -1,9 +1,14 @@
 import logging
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Type, TypeVar
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.services.llm.client import LLMClient
 from app.services.llm.parser import LLMParser
+
+from pydantic import BaseModel
+
+# Create a TypeVar bound to Pydantic's BaseModel to preserve IDE auto-completion
+T = TypeVar("T", bound=BaseModel)
 
 logger = logging.getLogger(__name__)
 
@@ -129,3 +134,56 @@ class LLMService:
         report = self.tracker.get_report()
         logger.info("📊 Session Usage Report generated.")
         return report
+    
+    async def ask_structured(
+        self, 
+        system_prompt: str, 
+        user_prompt: str, 
+        response_model: Type[T], 
+        config: Any = None
+    ) -> T:
+        """
+        Queries the LLM and guarantees a validated response matching a specific Pydantic schema.
+
+        Args:
+            system_prompt (str): Core instructions and behavior constraints.
+            user_prompt (str): The context data or query to process.
+            response_model (Type[T]): The Pydantic model class used for validation.
+            config (Any, optional): Model-specific execution configuration.
+
+        Returns:
+            T: An instance of the requested response_model populated with validated data.
+        """
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt)
+        ]
+
+        # Construct the native OpenAI JSON Schema payload for strict structured outputs
+        openai_json_schema = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": response_model.__name__,
+                "strict": True,
+                "schema": response_model.model_json_schema()
+            }
+        }
+
+        try:
+            # The client executes the call, handles cache and tracking, and returns a raw JSON string
+            raw_json_text = await self.client.ask(messages, response_format=openai_json_schema, config=config)
+
+            # Clean potential markdown block reflections (e.g. ```json ... ```) just in case
+            cleaned_text = raw_json_text.strip()
+            if cleaned_text.startswith("```json"):
+                cleaned_text = cleaned_text[7:]
+            if cleaned_text.endswith("```"):
+                cleaned_text = cleaned_text[:-3]
+            cleaned_text = cleaned_text.strip()
+
+            # Map and validate the text directly into your Pydantic Schema
+            return response_model.model_validate_json(cleaned_text)
+
+        except Exception as e:
+            logger.error(f"❌ Failed to parse or validate structured output for {response_model.__name__}: {e}")
+            raise
