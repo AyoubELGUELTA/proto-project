@@ -19,10 +19,10 @@ def run_clustering(
 
     Args:
         relationships (pd.DataFrame): DataFrame containing the graph edges.
-            Expected columns: ['source', 'target', 'weight'].
+            Expected columns: ['source', 'target', 'weight']. (source and target being the entities' IDs)
         max_cluster_size (int): The maximum number of nodes allowed in a single 
             community before it attempts further partitioning. Defaults to 15.
-        random_seed (int): Seed for reproducibility of the clustering. Defaults to 42.
+        random_seed (int): Seed for reproducibility of the clustering. Defaults to 42 (it sets the same random procedure for each futur tests..).
 
     Returns:
         pd.DataFrame: A mapping of nodes to their respective communities.
@@ -72,7 +72,7 @@ def run_clustering(
             cluster_data.append({
                 "level": cluster.level,
                 "community": cluster.cluster,
-                "parent": cluster.parent,
+                "parent": cluster.parent_cluster,
                 "node": cluster.node
             })
 

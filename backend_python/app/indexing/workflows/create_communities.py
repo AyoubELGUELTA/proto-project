@@ -32,13 +32,15 @@ async def run_create_communities_workflow(community_service: CommunityService) -
     if relationships_df.empty:
         logger.error("❌ Workflow aborted: Insufficient relationship data for clustering.")
         return None
-
-    # --- Step 2: Community Detection (Compute) ---
-    # We execute the Hierarchical Leiden algorithm
-    logger.info(f"🧠 Computing Leiden clusters for {len(relationships_df)} relationships...")
     
     try:
+
+        # --- Step 2: Community Detection (Compute) ---
+        # We execute the Hierarchical Leiden algorithm
+        logger.info(f"🧠 Computing Leiden clusters for {len(relationships_df)} relationships...")
+
         # max_cluster_size is a key hyperparameter for LLM context window management later
+        
         clusters_df = run_clustering(relationships_df, max_cluster_size=15)#TODO centralisé max_cluster_size dans les configs..
         
         if clusters_df.empty:
@@ -50,7 +52,17 @@ async def run_create_communities_workflow(community_service: CommunityService) -
             f"communities detected across hierarchy levels."
         )
         
-        # --- Step 3: Metadata Enrichment (Future) ---
+        # --- Step 3: Persistance ---
+
+        logger.info("💾 Saving community structure to Neo4j...")
+        await community_service.save_community_assignments(clusters_df)
+        # -----------------------------
+
+        logger.info(f"✅ Workflow complete: Communities are now live in the graph.")
+        return clusters_df
+    
+
+        # --- Step 4: Metadata Enrichment (Future) ---
         # TODO: Integrate title mapping and LLM Summarization here
         
         return clusters_df
