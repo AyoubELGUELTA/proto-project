@@ -114,11 +114,21 @@ class LLMClient:
         # We check if a custom config object was passed, and dynamically adapt temperature or model
         current_model_name = self.model_name
         if config:
-            if hasattr(config, "temperature"):
-                kwargs["temperature"] = config.temperature
-            if hasattr(config, "model_name"):
-                kwargs["model"] = config.model_name
-                current_model_name = config.model_name
+            # 1. Gestion si config est un dictionnaire Python standard
+            if isinstance(config, dict):
+                if "temperature" in config:
+                    kwargs["temperature"] = config["temperature"]
+                if "model_name" in config:
+                    kwargs["model"] = config["model_name"]
+                    current_model_name = config["model_name"]
+            
+            # 2. Gestion (Fallback) si config est un objet avec des attributs (ex: Pydantic)
+            else:
+                if hasattr(config, "temperature"):
+                    kwargs["temperature"] = config.temperature
+                if hasattr(config, "model_name"):
+                    kwargs["model"] = config.model_name
+                    current_model_name = config.model_name
 
         # Execute call with LangChain
         response = await self.llm.ainvoke(messages, **kwargs)

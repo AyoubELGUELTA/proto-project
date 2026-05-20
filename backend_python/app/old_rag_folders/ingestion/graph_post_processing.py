@@ -4,7 +4,7 @@ Post-processing Graph RAG - Deduplication par Clustering + LLM ciblé
 
 from typing import List, Dict, Tuple, Any
 from app.utils.text_utils import normalize_entity_name
-from app.logic import graph_cleaner as gc
+from backend_python.app.old_rag_folders.logic import graph_cleaner as gc
 from app.models.graph_schemas import EntityType, RelationType
 
 

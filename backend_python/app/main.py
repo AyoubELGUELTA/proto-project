@@ -1,14 +1,17 @@
-
+# app/main.py
 from contextlib import asynccontextmanager
 
 from app.services.startup_service import StartupService
 from app.services.database.encyclopedia_repository import EncyclopediaRepository
-
 from app.infrastructure.database.postgres_client import PostgresClient
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# --- IMPORTATION DES ROUTEURS ---
+# On importe les routeurs de tes fichiers v1
+from app.api.v1.ingest import router as ingest_router
+from app.api.v1.graph.communities import router as communities_router
 
 
 @asynccontextmanager
@@ -28,8 +31,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-title="Dawask RAG Prototype",
-lifespan=lifespan  
+    title="Dawask RAG Prototype",
+    lifespan=lifespan  
 )
 
 app.add_middleware(
@@ -39,3 +42,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- DECLARATION DES ROUTES ---
+
+# 1. Route d'ingestion principale (gère le endpoint configuré dans ingest.py, ex: /ingest)
+app.include_router(ingest_router)
+
+# 2. Nouvelle route analytique pour les rapports de communautés
+# En ajoutant prefix="/graph", l'URL finale devient : /graph/communities/refresh-reports
+app.include_router(communities_router, prefix="/graph")

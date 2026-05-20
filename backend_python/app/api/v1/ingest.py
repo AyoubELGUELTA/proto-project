@@ -1,7 +1,6 @@
 import logging
-from fastapi import UploadFile
+from fastapi import UploadFile, APIRouter
 from typing import Dict, Any
-
 # Services & Repositories
 from app.infrastructure.database.postgres_client import PostgresClient
 from app.infrastructure.neo4j.client import Neo4jClient
@@ -13,7 +12,7 @@ from app.services.storage.file_service import FileService
 from app.services.llm.factory import LLMFactory
 from app.services.llm.parser import LLMParser
 from app.services.graph.graph_service import GraphService
-from app.services.graph.community_service import CommunityService
+from backend_python.app.services.graph.community_service import CommunityService
 from app.services.startup_service import StartupService
 
 # Resolution Engine & Operations
@@ -31,6 +30,10 @@ from app.core.data_model.text_units import TextUnit
 
 logger = logging.getLogger(__name__)
 
+router = APIRouter(tags=["Document Ingestion"])
+
+
+@router.post("/ingest")
 async def ingest_single_file(file: UploadFile) -> Dict[str, Any]:
     """
     Orchestrates the complete ingestion pipeline for a single PDF document.
@@ -128,7 +131,7 @@ async def ingest_single_file(file: UploadFile) -> Dict[str, Any]:
             )
             await chunk_repo.store_text_units(doc_id, [identity_unit], chunk_type="IDENTITY")
 
-            # D. GRAPH EXTRACTION & RESOLUTION
+            # D. FULL GRAPH LIFECYCLE (Extraction, Resolution, Summarization & Community Clustering) TODO
             domain_context = identity_data.get("executive_summary", "A general historical document.")
             
             logger.info("🕸️ Running Graph Extraction pipeline...")

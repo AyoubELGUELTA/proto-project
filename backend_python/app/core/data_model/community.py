@@ -14,8 +14,14 @@ class CommunityModel(NamedModel):
     entity_ids: Optional[List[str]] = Field(default_factory=list)
     relationship_ids: Optional[List[str]] = Field(default_factory=list)
     text_unit_ids: Optional[List[str]] = Field(default_factory=list)
-    
     covariate_ids: Dict[str, List[str]] = Field(default_factory=dict)
+
+    last_report_hash: Optional[str] = None
+    last_report_entity_count: Optional[int] = None
+    last_report_relationship_count: Optional[int] = None
+    last_report_semantic_mass: Optional[int] = None # the amount of text within the entities descriptions
+    last_report_rating: Optional[float] = None # out of 10 (7.5 <=> 7.5/10)
+    last_report_rating_explanation: Optional[str] = None
     
     attributes: Dict[str, Any] = Field(default_factory=dict)
     size: Optional[int] = Field(None, description="Amount of text units in this community")

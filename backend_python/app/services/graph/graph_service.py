@@ -11,7 +11,7 @@ from app.indexing.operations.graph.summarize_manager import SummarizeManager
 from app.indexing.operations.entity_resolution.resolution_engine import EntityResolutionEngine
 from app.indexing.operations.graph.store_manager import GraphStoreManager
 
-from app.services.graph.community_service import CommunityService
+from backend_python.app.services.graph.community_service import CommunityService
 
 from app.services.llm.parser import LLMParser
 
@@ -29,7 +29,7 @@ class GraphService:
     2. Entity Resolution: Merging duplicates using deterministic and LLM-based logic.
     3. Relationship Mapping: Re-anchoring relations to resolved entity IDs.
     4. Summarization: Consolidating descriptions for final graph storage.
-    %. Persistence: We construct the graph with the provided data.
+    5. Persistence: We construct the graph with the provided data.
     """
     def __init__(
         self, 
