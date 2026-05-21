@@ -260,24 +260,27 @@ class CommunityService:
         """
         query = """
         MATCH (c:Community {id: $community_id})
-        
+
         // 1. Extraction des entités directes et leur degré d'importance
         OPTIONAL MATCH (e:Entity)-[:IN_COMMUNITY]->(c)
         WITH c, collect(distinct e) AS entities, collect(distinct e.id) AS entity_ids
-        
-        // 2. Extraction des relations internes
-        OPTIONAL MATCH (src)-[r:RELATED]->(tgt)
+
+        // 2. Extraction des relations internes (on map directement source et target via les IDs des nœuds)
+        OPTIONAL MATCH (src:Entity)-[r:RELATED]->(tgt:Entity)
         WHERE src.id IN entity_ids AND tgt.id IN entity_ids
-        WITH c, entities, collect(distinct r) AS relationships
-        
-        // 3. Extraction des rapports des sous-communautés enfants
+        WITH c, entities, collect(distinct {source: src.id, target: tgt.id, description: coalesce(r.description, "")}) AS relationships
+
+        // 3. Extraction et aggregation immédiate des rapports des sous-communautés enfants
         OPTIONAL MATCH (child:Community)-[:CHILD_OF]->(c)
         WHERE child.report_title IS NOT NULL
-        
+        WITH c, entities, relationships, 
+            collect(distinct {id: child.id, title: child.report_title, summary: child.report_summary, findings: child.report_findings}) AS sub_reports
+
+        // 4. Assemblage final (Aucune agrégation ici, Neo4j est content !)
         RETURN {
-            entities: [ent IN entities | {id: ent.id, title: ent.title, type: ent.type, description: ent.description, degree: ent.degree or 0}],
-            relationships: [rel IN relationships | {source: rel.source, target: rel.target, description: rel.description}],
-            sub_reports: collect(distinct {id: child.id, title: child.report_title, summary: child.report_summary, findings: child.report_findings})
+            entities: [ent IN entities | {id: ent.id, title: ent.title, type: ent.type, description: ent.description, degree: coalesce(ent.degree, 0)}],
+            relationships: relationships,
+            sub_reports: sub_reports
         } AS payload
         """
         records = await self.client.execute_query(query, {"community_id": community_id})

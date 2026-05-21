@@ -1,6 +1,7 @@
 import logging
 from fastapi import UploadFile, APIRouter
 from typing import Dict, Any
+
 # Services & Repositories
 from app.infrastructure.database.postgres_client import PostgresClient
 from app.infrastructure.neo4j.client import Neo4jClient
@@ -12,8 +13,7 @@ from app.services.storage.file_service import FileService
 from app.services.llm.factory import LLMFactory
 from app.services.llm.parser import LLMParser
 from app.services.graph.graph_service import GraphService
-from backend_python.app.services.graph.community_service import CommunityService
-from app.services.startup_service import StartupService
+from app.services.graph.community_service import CommunityService
 
 # Resolution Engine & Operations
 from app.indexing.operations.text.identity_service import IdentityService
@@ -31,27 +31,11 @@ from app.core.data_model.text_units import TextUnit
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Document Ingestion"])
-
-
 @router.post("/ingest")
 async def ingest_single_file(file: UploadFile) -> Dict[str, Any]:
     """
     Orchestrates the complete ingestion pipeline for a single PDF document.
-    
-    Pipeline Steps:
-    1. Infrastructure Setup: Connects to DB and initializes LLM services.
-    2. Document Staging: Saves file locally and creates record in PostgreSQL.
-    3. Text Unitization: Layout-aware chunking and spatial enrichment.
-    4. Identity Generation: Creates a high-level "Identity Card" for global context.
-    5. Graph Extraction: Distributed extraction of entities and relationships.
-    6. Entity Resolution: Merges duplicates using core logic and LLM verification.
-    7. Persistence: Stores chunks and metadata (Graph storage usually follows).
-
-    Args:
-        file (UploadFile): The raw PDF file from the API request.
-
-    Returns:
-        Dict[str, Any]: A summary of the ingestion results, including graph stats and cost report.
+    Utilizes task-specific decoupled LLM services via LLMFactory.
     """
     
     logger.info(f"📥 Starting ingestion pipeline for: {file.filename}")
@@ -63,46 +47,35 @@ async def ingest_single_file(file: UploadFile) -> Dict[str, Any]:
     neo4j_client = Neo4jClient()
     await neo4j_client.connect()
 
-    
-    # Semantic LLM selection: Light for volume, Heavy for reasoning
-    
-    llm_light = LLMFactory.get_light_extractor() 
-    llm_heavy = LLMFactory.get_heavy_extractor() 
-
     file_service = FileService()
-
     doc_repo = DocumentRepository(db)
     chunk_repo = ChunkRepository(db)
     encyclopedia_repo = EncyclopediaRepository(db)
-
-    parser = LLMParser()
-    
     store_manager = GraphStoreManager(neo4j_client)
 
-    # ASSEMBLE RESOLUTION ENGINE
+    # 2. ASSEMBLE RESOLUTION ENGINE (Multiplication des attributs ici 🎯)
     core_res = CoreResolver(encyclopedia=EncyclopediaManager(encyclopedia_repo))
+    
     llm_res = LLMResolver(
-        light_service=llm_light, 
-        heavy_service=llm_heavy
+        entity_resolution_service=LLMFactory.get_entity_resolution_service(),
+        anchoring_resolution_service=LLMFactory.get_anchoring_resolution_service(),
+        consultant_resolution_service=LLMFactory.get_consultant_resolution_service()
     )
     res_engine = EntityResolutionEngine(core_resolver=core_res, llm_resolver=llm_res)
 
-
-    # ASSEMBLE GRAPH SERVICES
-    
+    # 3. ASSEMBLE GRAPH SERVICES (Injection des services granulaires 🎯)
     community_service = CommunityService(neo4j_client)
 
     graph_service = GraphService(
-        extractor=EntityAndRelationExtractor(llm_light),
-        summarizer=SummarizeManager(llm_light), 
-        parser=parser,
+        extractor=EntityAndRelationExtractor(LLMFactory.get_graph_extraction_service()),
+        summarizer=SummarizeManager(LLMFactory.get_element_summarization_service()), 
+        parser=LLMParser(),
         resolution_engine=res_engine,
         store_manager=store_manager,
-        community_service = community_service
-
+        community_service=community_service
     )
 
-    identity_service = IdentityService(llm_heavy)
+    identity_service = IdentityService(LLMFactory.get_document_identity_service())
 
     # 4. DOCUMENT PREPARATION
     doc_id = await doc_repo.get_or_create(file.filename)
@@ -131,7 +104,7 @@ async def ingest_single_file(file: UploadFile) -> Dict[str, Any]:
             )
             await chunk_repo.store_text_units(doc_id, [identity_unit], chunk_type="IDENTITY")
 
-            # D. FULL GRAPH LIFECYCLE (Extraction, Resolution, Summarization & Community Clustering) TODO
+            # D. FULL GRAPH LIFECYCLE (Extraction, Resolution, Summarization & Community Clustering)
             domain_context = identity_data.get("executive_summary", "A general historical document.")
             
             logger.info("🕸️ Running Graph Extraction pipeline...")

@@ -155,35 +155,18 @@ class LLMService:
             T: An instance of the requested response_model populated with validated data.
         """
         messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt)
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt)
         ]
 
-        # Construct the native OpenAI JSON Schema payload for strict structured outputs
-        openai_json_schema = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": response_model.__name__,
-                "strict": True,
-                "schema": response_model.model_json_schema()
-            }
-        }
-
         try:
-            # The client executes the call, handles cache and tracking, and returns a raw JSON string
-            raw_json_text = await self.client.ask(messages, response_format=openai_json_schema, config=config)
-
-            # Clean potential markdown block reflections (e.g. ```json ... ```) just in case
-            cleaned_text = raw_json_text.strip()
-            if cleaned_text.startswith("```json"):
-                cleaned_text = cleaned_text[7:]
-            if cleaned_text.endswith("```"):
-                cleaned_text = cleaned_text[:-3]
-            cleaned_text = cleaned_text.strip()
-
-            # Map and validate the text directly into your Pydantic Schema
-            return response_model.model_validate_json(cleaned_text)
+            # On prépare le modèle pour qu'il réponde DIRECTEMENT avec le schéma Pydantic.
+            # LangChain s'occupe d'injecter les 'additionalProperties: false' en coulisses.
+            structured_llm = self.client.llm.with_structured_output(response_model)
+            
+            # L'appel renvoie directement une instance valide de ton Pydantic model
+            return await structured_llm.ainvoke(messages, config=config)
 
         except Exception as e:
-            logger.error(f"❌ Failed to parse or validate structured output for {response_model.__name__}: {e}")
+            logger.error(f"❌ Failed native structured output for {response_model.__name__}: {e}")
             raise

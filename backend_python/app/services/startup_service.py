@@ -16,9 +16,9 @@ class StartupService:
         if count > 0:
             return
         
-        # 2. Load the (mvp) json file (FALLBACK)
+        # 2. Load the (mvp) json file via the repository 
         logger.info("📚 Initializing Encyclopedia from JSON source...")
-        entries = self._load_json_source() 
+        entries = self.repo.load_from_json_file() 
         
         # 3. Upsert in SQL
         for entry in entries:

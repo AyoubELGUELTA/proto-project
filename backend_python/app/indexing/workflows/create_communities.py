@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 from typing import Optional
-from backend_python.app.services.graph.community_service import CommunityService
+from app.services.graph.community_service import CommunityService
 from app.indexing.operations.communities.cluster_graph import run_clustering
 
 logger = logging.getLogger(__name__)

@@ -3,6 +3,8 @@ import json
 from typing import Optional, List
 from app.core.data_model.encyclopedia import EncyclopediaEntry
 from app.infrastructure.database.postgres_client import PostgresClient
+import os
+
 
 logger = logging.getLogger(__name__)
 
@@ -104,4 +106,60 @@ class EncyclopediaRepository:
 
         except Exception as e:
             logger.error(f"❌ Error searching encyclopedia for {slug} (cat: {category}): {e}")
+            return []
+        
+    
+    def load_from_json_file(self, file_path: str = "app/core/resources/encyclopedia_fallback.json") -> List[EncyclopediaEntry]:
+        """
+        Loads the fallback initialization entries from a local JSON file.
+        Supports both the legacy MVP uppercase format and the new structured model format.
+        """
+        import os
+        if not os.path.exists(file_path):
+            logger.warning(f"⚠️ Encyclopedia fallback file not found at {file_path}. Returning empty list.")
+            return []
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                raw_data = json.load(f)
+            
+            entries = []
+            for item in raw_data:
+                # 1. SI LE FICHIER EST DÉJÀ AU NOUVEAU FORMAT (Minuscules)
+                if "title" in item or "core_summary" in item:
+                    if isinstance(item.get("properties"), str):
+                        item["properties"] = json.loads(item["properties"])
+                    entries.append(EncyclopediaEntry(**item))
+                    continue
+                
+                # 2. ADAPTER DE COMPATIBILITÉ POUR LE FORMAT MVP (Majuscules)
+                # On package les champs spécifiques ('ALIASES', 'NASAB', 'PHASE') dans le dict 'properties'
+                mvp_properties = {
+                    "aliases": item.get("ALIASES", []),
+                    "nasab": item.get("NASAB"),
+                    "phase": item.get("PHASE")
+                }
+                # On nettoie les clés qui vaudraient None pour garder un dictionnaire propre
+                mvp_properties = {k: v for k, v in mvp_properties.items() if v is not None}
+
+                mapped_data = {
+                    # On garde l'ID sémantique (ex: 'UMAR_IBN_AL_KHATTAB') au lieu de générer un UUID random,
+                    # c'est beaucoup plus propre pour une encyclopédie fixe de référence !
+                    "id": item.get("ID"), 
+                    "title": item.get("CANONICAL_NAME"),
+                    "type": item.get("TYPE"),
+                    "core_summary": item.get("CORE_SUMMARY"),
+                    "properties": mvp_properties,
+                    "review_status": "OFFICIAL", # Valeur par défaut
+                    "is_verified": True
+                }
+                
+                # Validation Pydantic transparente
+                entries.append(EncyclopediaEntry(**mapped_data))
+            
+            logger.info(f"📚 Successfully loaded {len(entries)} entries (MVP format dynamically adapted).")
+            return entries
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to parse encyclopedia fallback JSON file: {e}")
             return []

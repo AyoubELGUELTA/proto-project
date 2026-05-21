@@ -31,30 +31,46 @@ class CommunityStateEvaluator:
         Returns:
             Tuple[str, float]: (Strategy to execute ('SKIP', 'CREATE', 'REWRITE'), divergence_score (between 0 and 1))
         """
-        if state["last_report_hash"] is None:
+        comm_id = state.get("id", "UNKNOWN_ID")
+        last_hash = state.get("last_report_hash")
+        curr_hash = state.get("current_hash")
+
+        # 🚨 LOG DE DIAGNOSTIC INITIAL
+        logger.info(
+            f"🕵️ Inspecting drift for community {comm_id} -> "
+            f"current_hash: '{curr_hash}' | last_report_hash: '{last_hash}'"
+        )
+
+        # Cas 1 : Absence totale de rapport historique
+        if last_hash is None or last_hash == "" or last_hash == "null":
+            logger.info(f"🆕 [DECISION] -> CREATE for community {comm_id} (Reason: No historical report hash found).")
             return "CREATE", 1.0
 
-        if state["current_hash"] == state["last_report_hash"]:
+        # Cas 2 : Identité parfaite (Aucun changement structurel)
+        if curr_hash == last_hash:
+            logger.info(f"😴 [DECISION] -> SKIP for community {comm_id} (Reason: Current hash perfectly matches historical hash).")
             return "SKIP", 0.0
 
         # 1. Extraction des anciennes baselines
-        prev_entities = state["last_report_entity_count"] or 0
-        prev_rels = state["last_report_relationship_count"] or 0
-        prev_mass = state["last_report_semantic_mass"] or 0
+        prev_entities = state.get("last_report_entity_count") or 0
+        prev_rels = state.get("last_report_relationship_count") or 0
+        prev_mass = state.get("last_report_semantic_mass") or 0
 
-        # 2. Calcul des ratios de dérive individuels (bornés à 1.0 max pour éviter les explosions)
-        drift_e = min(abs(state["current_entity_count"] - prev_entities) / max(prev_entities, 1), 1.0)
-        drift_r = min(abs(state["current_relationship_count"] - prev_rels) / max(prev_rels, 1), 1.0)
-        drift_m = min(abs(state["current_semantic_mass"] - prev_mass) / max(prev_mass, 1), 1.0)
+        # 2. Calcul des ratios de dérive individuels
+        drift_e = min(abs(state.get("current_entity_count", 0) - prev_entities) / max(prev_entities, 1), 1.0)
+        drift_r = min(abs(state.get("current_relationship_count", 0) - prev_rels) / max(prev_rels, 1), 1.0)
+        drift_m = min(abs(state.get("current_semantic_mass", 0) - prev_mass) / max(prev_mass, 1), 1.0)
 
-        # 3. Application des poids relatifs (Somme des poids = 1.0)
-        w_entities = 0.50  # Entities are the most considerable factor
-        w_relations = 0.30 # The network topology
-        w_mass = 0.20      # The textual information density 
+        # 3. Application des poids relatifs
+        w_entities = 0.50  
+        w_relations = 0.30 
+        w_mass = 0.20      
         divergence_score = (w_entities * drift_e) + (w_relations * drift_r) + (w_mass * drift_m)
 
-        # 4. Prise de décision
+        # 4. Prise de décision basée sur le score
         if divergence_score >= threshold:
+            logger.info(f"🔄 [DECISION] -> REWRITE for community {comm_id} (Score: {divergence_score:.4f} >= Threshold: {threshold}).")
             return "REWRITE", divergence_score
         
+        logger.info(f"💤 [DECISION] -> SKIP for community {comm_id} (Score: {divergence_score:.4f} < Threshold: {threshold}).")
         return "SKIP", divergence_score

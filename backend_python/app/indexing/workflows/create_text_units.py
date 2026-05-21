@@ -62,7 +62,7 @@ async def workflow_create_text_units(file_path: str, identity_text: Optional[str
         # 5. Final Sub-splitting (Token limits management)
         # We use a tighter limit (800) here to be safe for diverse embedding models
         
-        splitter = TextSplitter(max_tokens=800, overlap=120)
+        splitter = TextSplitter(max_tokens=800, overlap=120) #TODO to centralize 
         final_units = splitter.split_units(refined_units)
 
         # 6. Persistence & Image Storage (MinIO)

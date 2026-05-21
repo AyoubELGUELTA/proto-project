@@ -1,6 +1,11 @@
 # Copyright (c) 2024 Microsoft Corporation.
 # Licensed under the MIT License
 
+
+
+
+
+# ---------------------------- IMPORTANT ----------------------------
 # THE LOGIC OF THIS FILE WAS MOVED TO CORE/CONFIG/ FOLDER, IT REMAINS FOR TESTS PURPOSES ONLY
 
 from dataclasses import dataclass
@@ -50,3 +55,6 @@ class SummarizeDescriptionsConfig(BaseModel):
     max_summary_length: int = 500
     max_input_tokens: int = 2000
     num_threads: int = 4
+
+# ---------------------------- IMPORTANT ----------------------------
+# THE LOGIC OF THIS FILE WAS MOVED TO CORE/CONFIG/ FOLDER, IT REMAINS FOR TESTS PURPOSES ONLY

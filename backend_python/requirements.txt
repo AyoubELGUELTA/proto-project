@@ -25,6 +25,10 @@ langchain-core
 langchain-community
 langchain-text-splitters
 langchain-openai
+langchain-anthropic #TODO
+langchain_google_genai #TODO
+langchain_mistralai #TODO
+langchain-deepseek #TODO
 langgraph
 tiktoken
 
@@ -42,6 +46,7 @@ openai
 # Utils
 python-dotenv
 python-magic
+python-multipart
 requests
 phonetics
 levenshtein

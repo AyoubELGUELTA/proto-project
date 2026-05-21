@@ -11,7 +11,7 @@ from app.indexing.operations.graph.summarize_manager import SummarizeManager
 from app.indexing.operations.entity_resolution.resolution_engine import EntityResolutionEngine
 from app.indexing.operations.graph.store_manager import GraphStoreManager
 
-from backend_python.app.services.graph.community_service import CommunityService
+from app.services.graph.community_service import CommunityService
 
 from app.services.llm.parser import LLMParser
 

@@ -1,8 +1,8 @@
 import logging
 from fastapi import APIRouter, BackgroundTasks
 from app.infrastructure.neo4j.client import Neo4jClient
-from backend_python.app.services.graph.community_service import CommunityService
-from backend_python.app.indexing.operations.communities.context_builder import HierarchicalContextBuilder
+from app.services.graph.community_service import CommunityService
+from app.indexing.operations.communities.context_builder import HierarchicalContextBuilder
 from app.indexing.operations.communities.report_builder import CommunityReportBuilder
 from app.services.llm.factory import LLMFactory
 from app.indexing.workflows.community_reporting_pipeline import run_community_reporting_workflow 
@@ -19,13 +19,13 @@ async def _reporting_background_worker(neo4j_client: Neo4jClient):
     Gère le cycle de vie du workflow, le tracking des coûts et la fermeture des connexions.
     """
     try:
-        # 1. Initialisation de la brigade
+        # 1. Initialisation de la brigade de services
         community_service = CommunityService(neo4j_client)
         context_builder = HierarchicalContextBuilder(community_service=community_service)
         
-        # On utilise le modèle light comme tu l'as configuré pour le MVP
-        llm_light = LLMFactory.get_light_extractor() 
-        report_builder = CommunityReportBuilder(llm=llm_light)
+        # Récupération du service LLM spécifiquement calibré pour les rapports de communautés 🎯
+        community_reporter_llm = LLMFactory.get_community_reporting_service() 
+        report_builder = CommunityReportBuilder(llm=community_reporter_llm)
         
         # 2. Exécution du workflow lourd
         await run_community_reporting_workflow(

@@ -4,10 +4,14 @@ from app.services.llm.service import LLMService
 from app.services.llm.tracker import LLMTracker
 from app.services.llm.cache import LLMCache
 from app.core.config.llm_config import (
-    LLMConfig, 
-    LLM_CONFIG_LIGHT, 
-    SUMMARIZATION_LLM_CONFIG, 
-    LLM_CONFIG_HEAVY
+    LLMConfig,
+    DOCUMENT_IDENTITY_CONFIG,
+    ELEMENT_SUMMARIZATION_CONFIG,
+    GRAPH_EXTRACTION_CONFIG,
+    ENTITY_RESOLUTION_CONFIG,
+    ANCHORING_RESOLUTION_CONFIG,
+    CONSULTANT_RESOLUTION_CONFIG,
+    COMMUNITY_REPORTING_CONFIG
 )
 from app.core.settings import settings
 
@@ -17,65 +21,98 @@ class LLMFactory:
     """
     Centralized factory for creating and managing LLM services.
     
-    It maintains shared instances of the LLMTracker and LLMCache to ensure 
-    consistency in token tracking and caching across different service instances.
+    Maintains shared instances of LLMTracker and LLMCache to ensure 
+    consistency in token tracking and caching across all task services.
     """
     
-    # Shared instances for the lifecycle of the application
+    # Shared infrastructure instances for the application lifecycle
     _tracker = LLMTracker()
     _cache = LLMCache(redis_url=settings.redis_url)
     
     @classmethod
-    def get_service(cls, config: LLMConfig = None) -> LLMService:
+    def get_service(cls, config: LLMConfig) -> LLMService:
         """
-        Creates a new LLMService instance with a specific configuration.
+        Creates a new LLMService instance with a specific target configuration.
 
         Args:
-            config (LLMConfig, optional): The model and parameter configuration. 
-                                          Defaults to LLM_CONFIG_LIGHT.
+            config (LLMConfig): The exact model, temperature, and parameter configuration.
 
         Returns:
-            LLMService: A configured service ready for extraction or reasoning.
+            LLMService: A configured service ready to execute its assigned task.
         """
-        config = config or LLM_CONFIG_LIGHT
-        
-        logger.debug(f"🛠️ Creating LLMService with model: {config.model_name}")
-        
+        api_keys = {
+            "openai": getattr(settings, "openai_api_key", None),
+            "anthropic": getattr(settings, "anthropic_api_key", None),
+            "deepseek": getattr(settings, "deepseek_api_key", None),
+            "mistral": getattr(settings, "mistral_api_key", None),
+            "google": getattr(settings, "google_api_key", None),
+        }
+
+        # Sécurité : Vérification préventive de la présence de la clé d'API requise
+        provider = config.provider.lower()
+        if not api_keys.get(provider):
+            logger.warning(
+                f"⚠️ API key for provider '{provider}' is missing in settings. "
+                f"Requests for task utilizing model '{config.model_name}' might fail."
+            )
+
         client = LLMClient(
             config=config, 
-            api_key=settings.openai_api_key, 
             tracker=cls._tracker, 
-            cache=cls._cache
+            cache=cls._cache,
+            api_keys=api_keys
         )
         
         return LLMService(client=client)
-
-    # --- Semantic Shortcuts ---
+    
+    # ==============================================================================
+    # 🎯 EXPLICIT TASK-BASED SERVICE SHORTCUTS
+    # ==============================================================================
 
     @classmethod
-    def get_light_extractor(cls) -> LLMService:
-        """
-        Returns a service configured for fast, cost-effective extractions (e.g., GPT-4o-mini).
-        """
-        return cls.get_service(LLM_CONFIG_LIGHT)
+    def get_document_identity_service(cls) -> LLMService:
+        """Service tailored for generating structured documents identity profiles."""
+        return cls.get_service(DOCUMENT_IDENTITY_CONFIG)
     
     @classmethod
-    def get_heavy_extractor(cls) -> LLMService:
-        """
-        Returns a service configured for complex reasoning or high-precision extraction (e.g., GPT-4o).
-        """
-        return cls.get_service(LLM_CONFIG_HEAVY)
+    def get_element_summarization_service(cls) -> LLMService:
+        """Service tailored for merging and summarizing entities and relationships text blobs."""
+        return cls.get_service(ELEMENT_SUMMARIZATION_CONFIG)
+        
+    @classmethod
+    def get_graph_extraction_service(cls) -> LLMService:
+        """Service tailored for high-fidelity tuple extraction from raw text blocks."""
+        return cls.get_service(GRAPH_EXTRACTION_CONFIG)
 
     @classmethod
-    def get_summarizer(cls) -> LLMService:
+    def get_entity_resolution_service(cls) -> LLMService:
+        """Service tailored for complex cross-entity deduplication and merging operations."""
+        return cls.get_service(ENTITY_RESOLUTION_CONFIG)
+
+    @classmethod
+    def get_anchoring_resolution_service(cls) -> LLMService:
+        """Service tailored for structural context anchoring and verification tasks."""
+        return cls.get_service(ANCHORING_RESOLUTION_CONFIG)
+
+    @classmethod
+    def get_consultant_resolution_service(cls) -> LLMService:
         """
-        Returns a service specialized in long-context summarization.
+        Service tailored for semantic entity clustering and historical alias bridging.
+        Identifies potential duplicate entities (e.g., matching names with epithets or kunyas)
+        and outputs candidate index groupings in a strict JSON list of lists format.
         """
-        return cls.get_service(SUMMARIZATION_LLM_CONFIG)
+        return cls.get_service(CONSULTANT_RESOLUTION_CONFIG)
+
+    @classmethod
+    def get_community_reporting_service(cls) -> LLMService:
+        """Service tailored for mass context multi-level community insights and reports generation."""
+        return cls.get_service(COMMUNITY_REPORTING_CONFIG)
+
+    # ==============================================================================
+    # 📊 MONITORING UTILS
+    # ==============================================================================
 
     @classmethod
     def get_tracker(cls) -> LLMTracker:
-        """
-        Provides access to the shared token and cost tracker.
-        """
+        """Provides direct access to the shared session token and cost tracker."""
         return cls._tracker

@@ -24,7 +24,7 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-    # --- LLM ---
+    # ---  API KEYS ---
     openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
 
     # --- REDIS ---

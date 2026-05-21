@@ -1,7 +1,11 @@
 # app/services/llm/client.py
 import logging
-from typing import Any
+from typing import Any, Dict
 from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_mistralai import ChatMistralAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_deepseek import ChatDeepSeek
 from tenacity import retry, stop_after_attempt, wait_exponential
 from app.services.llm.tracker import LLMTracker
 from app.services.llm.cache import LLMCache
@@ -20,7 +24,7 @@ class LLMClient:
     3. Monitoring: Token usage tracking and cost estimation.
     """
 
-    def __init__(self, config: LLMConfig, api_key: str, tracker: LLMTracker, cache: LLMCache):
+    def __init__(self, config: LLMConfig, tracker: LLMTracker, cache: LLMCache, api_keys: Dict[str, str]):
         """
         Initializes the client with its required infrastructure.
         
@@ -34,17 +38,74 @@ class LLMClient:
         self.tracker = tracker
         self.cache = cache
         self.model_name = config.model_name 
+        self.provider = config.provider.lower()
+        self.api_keys = api_keys
 
         # Integration with LangChain's ChatOpenAI abstraction
 
-        self.llm = ChatOpenAI(
-            model=self.model_name, 
-            openai_api_key=api_key, 
+        self.llm = self._build_underlying_llm(
+            provider=self.provider,
+            model_name=self.model_name,
             temperature=config.temperature,
             max_retries=config.max_retries,
             streaming=config.streaming,
-            stream_usage=config.token_report
+            token_report=config.token_report
         )
+
+    def _build_underlying_llm(self, provider: str, model_name: str, temperature: float, 
+                              max_retries: int, streaming: bool, token_report: bool):
+        """Construit l'instance de ChatModel LangChain appropriée avec les bonnes clés d'API."""
+        
+        if provider == "openai":
+            return ChatOpenAI(
+                model=model_name, 
+                openai_api_key=self.api_keys.get("openai"), 
+                temperature=temperature,
+                max_retries=max_retries,
+                streaming=streaming,
+                stream_usage=token_report
+            )
+            
+        elif provider == "anthropic":
+            return ChatAnthropic(
+                model_name=model_name,
+                anthropic_api_key=self.api_keys.get("anthropic"),
+                temperature=temperature,
+                max_retries=max_retries,
+                streaming=streaming
+            )
+            
+        elif provider == "deepseek":
+            return ChatDeepSeek(
+                model=model_name,
+                api_key=self.api_keys.get("deepseek"),
+                base_url="https://api.deepseek.com/v1",
+                temperature=temperature,
+                max_retries=max_retries,
+                streaming=streaming,
+                stream_usage=token_report
+            )
+            
+        elif provider == "mistral":
+            return ChatMistralAI(
+                model=model_name,
+                mistral_api_key=self.api_keys.get("mistral"),
+                temperature=temperature,
+                max_retries=max_retries,
+                streaming=streaming
+            )
+        
+        elif provider == "google":
+            return ChatGoogleGenerativeAI(
+                model=model_name,
+                api_key=self.api_keys.get("google"),
+                temperature=temperature,
+                max_retries=max_retries,
+                streaming=streaming
+            )
+            
+        else:
+            raise ValueError(f"❌ Unsupported LLM Provider requested: '{provider}'")
 
     async def ask(self, messages: list, response_format : dict = None, config : Any = None) -> str:
         """
@@ -107,55 +168,46 @@ class LLMClient:
         """
         # Build base generation arguments
         kwargs = {}
-        if response_format:
+        
+        # Le format de réponse strict (JSON Mode) est supporté nativement par OpenAI, DeepSeek et Mistral
+        if response_format and self.provider in ["openai", "deepseek", "mistral", "google"]:
             kwargs["response_format"] = response_format
 
-        # Runtime Configuration Overrides
-        # We check if a custom config object was passed, and dynamically adapt temperature or model
         current_model_name = self.model_name
+        
+        # Gestion dynamique des surcharges de configuration au runtime
         if config:
-            # 1. Gestion si config est un dictionnaire Python standard
             if isinstance(config, dict):
                 if "temperature" in config:
                     kwargs["temperature"] = config["temperature"]
                 if "model_name" in config:
                     kwargs["model"] = config["model_name"]
                     current_model_name = config["model_name"]
-            
-            # 2. Gestion (Fallback) si config est un objet avec des attributs (ex: Pydantic)
             else:
                 if hasattr(config, "temperature"):
                     kwargs["temperature"] = config.temperature
                 if hasattr(config, "model_name"):
-                    kwargs["model"] = config.model_name
+                    # Gestion de l'asymétrie de nommage de variable selon les providers dans ainvoke
+                    param_key = "model"
+                    kwargs[param_key] = config.model_name
                     current_model_name = config.model_name
 
-        # Execute call with LangChain
+        # Invocation unifiée de LangChain
         response = await self.llm.ainvoke(messages, **kwargs)
         
-        # Metadata Extraction (Handling variations between LangChain versions)
+        # Extraction et normalisation standardisée des jetons multi-provider
         usage = getattr(response, "usage_metadata", {}) or {}
         resp_meta = getattr(response, "response_metadata", {}) or {}
         legacy_usage = resp_meta.get("token_usage", {}) or {}
 
-        # Resolve token counts from multiple possible metadata locations
-        prompt_tokens = (
-            usage.get("input_tokens") 
-            or legacy_usage.get("prompt_tokens") 
-            or 0
-        )
-        completion_tokens = (
-            usage.get("output_tokens") 
-            or legacy_usage.get("completion_tokens") 
-            or 0
-        )
+        prompt_tokens = usage.get("input_tokens") or legacy_usage.get("prompt_tokens") or 0
+        completion_tokens = usage.get("output_tokens") or legacy_usage.get("completion_tokens") or 0
 
-        # Usage Tracking mapped to the actual model used during this execution
         if self.tracker:
             self.tracker.add_usage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
-                model_name=current_model_name
+                model_name=f"{self.provider}/{current_model_name}"
             )
         
         return response.content

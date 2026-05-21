@@ -1,93 +1,149 @@
 import logging
-from typing import Dict, Any, List
+import re
+import json
+from typing import Dict, Any, List, Tuple
 
 from app.services.graph.community_service import CommunityService
 logger = logging.getLogger(__name__)
 
 class HierarchicalContextBuilder:
-    def __init__(self, community_service : CommunityService, max_context_tokens: int = 12000): 
+    def __init__(self, community_service: CommunityService, max_context_tokens: int = 12000): #TODO Centralize
         self.service = community_service
-        self.max_context_tokens = max_context_tokens
+        self.max_context_tokens = max_context_tokens 
 
     def _estimate_tokens(self, text: str) -> int:
-        # Approximation classique de production : ~1.3 tokens par mot en moyenne
         return int(len(text.split()) * 1.3)
 
-    async def build_optimized_context(self, community_id: str) -> str:
+    async def build_optimized_context(self, community_id: str) -> Tuple[str, dict]:
         """
-        Builds a high-fidelity hybrid context matching Microsoft's build_mixed_context.
-        Prioritizes dense sub-reports, then packs direct 'star' entities and internal relationships
-        until the token budget is fully depleted.
-        """
-        # Isolation de la couche de données grâce à ton refactor
-        payload = await self.service.get_raw_community_payload(community_id)
+        Builds an optimized context with explicit local integer IDs.
+        Handles Sub-Communities, Entities, and Relationships sequentially.
         
-        context_elements: List[str] = []
-        current_tokens = 0
-        added_entity_ids = set()
+        Returns a tuple: (context_string, mapping_dictionary_for_downstream_resolving)
+        """
+        logger.info(f"🔍 [START] Building context for community: {community_id}")
+        
+        try:
+            payload = await self.service.get_raw_community_payload(community_id)
+            sub_reports = payload.get("sub_reports", [])
+            entities = payload.get("entities", [])
+            relationships = payload.get("relationships", [])
+            
+            context_elements: List[str] = []
+            current_tokens = 0
+            
+            # --- NOTRE DICTIONNAIRE DE MAPPING DE PRODUCTION ENRICHI ---
+            id_mapping = {
+                "sub_communities": {}, # ex: {1: "uuid-subcomm-abc"} 
+                "entities": {},        # ex: {1: "uuid-123"}
+                "relationships": {}    # ex: {1: "source_ids_xyz"}
+            }
+            
+            added_entity_global_ids = set()
+            # Utile pour retrouver le nom/titre d'une entité à partir de son ID global dans la phase 3
+            global_id_to_title = {e["id"]: e["title"] for e in entities}
 
-        # 1. Priorité 1 : Les rapports des sous-communautés enfants (Compression maximale)
-        sub_reports = payload.get("sub_reports", [])
-        for report in sub_reports:
-            report_str = (
-                f"[SUB-COMMUNITY REPORT {report['id']}]\n"
-                f"Title: {report['title']}\n"
-                f"Summary: {report['summary']}\n"
-            )
-            
-            # Optionnel : On injecte les findings des enfants s'ils existent
-            if report.get("findings"):
-                report_str += "Key Findings:\n"
-                for finding in report["findings"]:
-                    report_str += f"- {finding.get('summary')}: {finding.get('explanation')}\n"
-            
-            tokens = self._estimate_tokens(report_str)
-            
-            if current_tokens + tokens <= self.max_context_tokens:
-                context_elements.append(report_str)
-                current_tokens += tokens
-            else:
-                # C'est l'élagage déterministe de Microsoft : dès que ça déborde, on loggue et on passe au tamis suivant
-                logger.warning(
-                    f"⚠️ Token budget reached during sub-reports packing for {community_id}. "
-                    f"Truncating remaining sub-reports."
+            # Regex compilée pour nettoyer proprement les balises [Data: ...] des enfants 🧹
+            data_tag_regex = re.compile(r'\s*\[Data:\s*.*?\]', re.IGNORECASE)
+
+            # --- PHASE 1 : SUB-REPORTS (AVEC ID NUMÉRIQUE LOCAL) ---
+            sub_reports_added = 0
+            if sub_reports:
+                logger.info(f"🌿 Processing {len(sub_reports)} potential sub-reports for context inclusion...")
+                
+            for idx, report in enumerate(sub_reports, start=1):
+                # 1. Structure du bloc de base alignée sur notre nouveau standard
+                report_str = (
+                    f"[SUB-COMMUNITY] id: {idx} | title: {report.get('title', 'Untitled')} | "
+                    f"summary: {report.get('summary', 'No summary provided')}\n"
                 )
-                break  # On arrête d'ajouter des gros blocs de rapports
+                
+                # 2. Gestion hybride et ultra-robuste de "findings" vs "findings_json"
+                raw_findings = report.get("findings") or report.get("findings_json")
+                
+                # Sécurité au cas où la base renvoie une chaîne JSON brute non parsée
+                if isinstance(raw_findings, str):
+                    try:
+                        raw_findings = json.loads(raw_findings)
+                    except Exception as json_err:
+                        logger.warning(f"⚠️ Could not parse findings_json string for sub-report: {json_err}")
+                        raw_findings = []
 
-        # 2. Priorité 2 : Les entités directes orphelines (Triées par importance)
-        # Note sur ton TODO : En Neo4j, "degree" est correct si tu as exécuté un algo de centralité, 
-        # mais utiliser .get() avec un fallback à 0 sécurise le code contre les KeyErrors.
-        sorted_entities = sorted(
-            payload.get("entities", []), 
-            key=lambda x: x.get("degree", 0), 
-            reverse=True
-        )
-        
-        for ent in sorted_entities:
-            ent_str = f"[DIRECT ENTITY] {ent['title']} ({ent['type']}) - {ent['description']}\n"
-            tokens = self._estimate_tokens(ent_str)
+                if isinstance(raw_findings, list) and raw_findings:
+                    report_str += "Key Findings:\n"
+                    for finding in raw_findings:
+                        summary = finding.get('summary', 'No summary')
+                        explanation = finding.get('explanation', '')
+                        
+                        # Évite que le LLM Parent ne lise et ne recopie des hashes globaux des entites et source_ids
+                        clean_explanation = data_tag_regex.sub('', explanation).strip()
+                        
+                        report_str += f"- {summary}: {clean_explanation}\n"
+                
+                # 3. Validation de la fenêtre de contexte & Mapping
+                tokens = self._estimate_tokens(report_str)
+                if current_tokens + tokens <= self.max_context_tokens:
+                    context_elements.append(report_str)
+                    current_tokens += tokens
+                    
+                    # On stocke le vrai ID/UUID de la sous-communauté en base
+                    actual_sub_id = report.get("id") or report.get("community_id", f"unknown_sub_{idx}")
+                    id_mapping["sub_communities"][idx] = actual_sub_id
+                    sub_reports_added += 1
+                else:
+                    logger.warning(f"⚠️ Context window saturated at Phase 1. Dropping remaining sub-reports.")
+                    break
+
+            # --- PHASE 2 : PACKING DES ENTITÉS ---
+            sorted_entities = sorted(entities, key=lambda x: x.get("degree", 0), reverse=True)
             
-            if current_tokens + tokens <= self.max_context_tokens:
-                context_elements.append(ent_str)
-                current_tokens += tokens
-                added_entity_ids.add(ent["id"])
-            else:
-                # Le sac à dos est plein pour les entités, on s'arrête là
-                break
+            entities_added = 0
+            for ent_idx, ent in enumerate(sorted_entities, start=1):
+                ent_str = f"[ENTITY] id: {ent_idx} | name: {ent['title']} | type: {ent['type']} | desc: {ent['description']}\n"
+                tokens = self._estimate_tokens(ent_str)
+                
+                if current_tokens + tokens <= self.max_context_tokens:
+                    context_elements.append(ent_str)
+                    current_tokens += tokens
+                    
+                    added_entity_global_ids.add(ent["id"])
+                    id_mapping["entities"][ent_idx] = ent["id"]
+                    entities_added += 1
+                else:
+                    logger.warning(f"⚠️ Context window saturated at Phase 2. Dropping remaining entities.")
+                    break
 
-        # 3. Priorité 3 : Les relations internes associées aux entités conservées
-        relationships = payload.get("relationships", [])
-        for rel in relationships:
-            # On ne prend la relation que si elle implique une entité star qu'on a réussi à caser
-            if rel.get("source") in added_entity_ids or rel.get("target") in added_entity_ids:
-                rel_str = f"[RELATION] {rel.get('source')} -> {rel.get('target')} | Desc: {rel.get('description')}\n"
+            # --- PHASE 3 : PACKING DES RELATIONS ---
+            relations_added = 0
+            valid_relationships = [
+                r for r in relationships 
+                if r.get("source") in added_entity_global_ids or r.get("target") in added_entity_global_ids
+            ]
+
+            for rel_idx, rel in enumerate(valid_relationships, start=1):
+                source_title = global_id_to_title.get(rel.get("source"), rel.get("source"))
+                target_title = global_id_to_title.get(rel.get("target"), rel.get("target"))
+                
+                rel_str = f"[RELATION] id: {rel_idx} | {source_title} -> {target_title} | desc: {rel.get('description')}\n"
                 tokens = self._estimate_tokens(rel_str)
                 
                 if current_tokens + tokens <= self.max_context_tokens:
                     context_elements.append(rel_str)
                     current_tokens += tokens
+                    
+                    id_mapping["relationships"][rel_idx] = rel.get("source_ids", "")
+                    relations_added += 1
                 else:
-                    break # Budget saturé à 100%
+                    logger.warning(f"⚠️ Context window saturated at Phase 3. Dropping remaining relationships.")
+                    break
 
-        logger.info(f"📊 Final context built for {community_id} with {current_tokens}/{self.max_context_tokens} tokens.")
-        return "\n".join(context_elements)
+            logger.info(
+                f"📊 Context built successfully: {sub_reports_added} Sub-Reports, "
+                f"{entities_added} Entities, {relations_added} Relations. Total Estimated Tokens: {current_tokens}"
+            )
+            
+            return "\n".join(context_elements), id_mapping
+
+        except Exception as e:
+            logger.critical(f"💥 CRITICAL ERROR inside build_optimized_context: {e}", exc_info=True)
+            raise e
